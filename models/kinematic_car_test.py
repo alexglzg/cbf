@@ -8,6 +8,8 @@ import statistics as st
 
 from control.dcbf_optimizer import NmpcDcbfOptimizerParam
 from control.dcbf_controller import NmpcDcbfController
+from control.lse_optimizer import NmpcLseOptimizer
+from control.lse_controller import NmpcLseController
 from models.dubin_car import (
     DubinCarDynamics,
     DubinCarGeometry,
@@ -177,7 +179,7 @@ def kinematic_car_pentagon_simulation_test():
     animate_world(sim, animation_name="pentagon")
 
 
-def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape):
+def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_type):
     start_pos, goal_pos, grid, obstacles = create_env(maze_type)
     geometry_regions = KinematicCarMultipleGeometry()
 
@@ -245,7 +247,10 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape):
             opt_param.terminal_weight = 5.0
     elif robot_shape == "triangle":
         opt_param.terminal_weight = 2.0
-    robot.set_controller(NmpcDcbfController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
+    if controller_type == "dcbf":
+        robot.set_controller(NmpcDcbfController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
+    elif controller_type == "lse":
+        robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
     sim = SingleAgentSimulation(robot, obstacles, goal_pos)
     sim.run_navigation(30.0)
     print("median: ", st.median(robot._controller._optimizer.solver_times))
@@ -253,7 +258,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape):
     print("min: ", min(robot._controller._optimizer.solver_times))
     print("max: ", max(robot._controller._optimizer.solver_times))
     print("Simulation finished.")
-    name = robot_shape + "_" + maze_type
+    name = robot_shape + "_" + maze_type + "_" + controller_type
     plot_world(sim, robot_indexes, figure_name=name, local_traj_indexes=traj_indexes, maze_type=maze_type)
     animate_world(sim, animation_name=name, maze_type=maze_type)
 
@@ -337,8 +342,13 @@ def create_env(env_type):
 if __name__ == "__main__":
     # kinematic_car_triangle_simulation_test()
     # kinematic_car_pentagon_simulation_test()
-    maze_types = ["maze", "oblique_maze"]
-    robot_shapes = ["triangle", "rectangle", "pentagon", "lshape"]
+    maze_types = ["oblique_maze"]
+    # maze_types = ["maze", "oblique_maze"]
+    robot_shapes = ["rectangle"]
+    # robot_shapes = ["triangle", "rectangle", "pentagon", "lshape"]
     for maze_type in maze_types:
         for robot_shape in robot_shapes:
-            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape)
+            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf")
+            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "lse")
+
+# export PYTHONPATH=$PWD:$PYTHONPATH
