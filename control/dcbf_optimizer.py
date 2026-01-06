@@ -27,6 +27,7 @@ class NmpcDbcfOptimizer:
         self.costs = costs
         self.dynamics_opt = dynamics_opt
         self.solver_times = []
+        self.iterations = []
 
     def set_state(self, state):
         self.state = state
@@ -220,12 +221,23 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 0, "print_time": 0}
-        start_timer = datetime.datetime.now()
-        self.opti.solver("ipopt", option)
-        opt_sol = self.opti.solve()
-        end_timer = datetime.datetime.now()
-        delta_timer = end_timer - start_timer
-        self.solver_times.append(delta_timer.total_seconds())
-        print("solver time: ", delta_timer.total_seconds())
-        return opt_sol
+        option = {"verbose": False, "ipopt.print_level": 0, "print_time": 1, "expand": True, "ipopt.linear_solver": "ma57"}
+
+        self.nr_constraints = self.opti.ng
+        self.nr_variables = self.opti.nx
+        print("Nr variables: ", self.nr_variables)
+        print("Nr constraints: ", self.nr_constraints)
+        try:
+            # start_timer = datetime.datetime.now()
+            self.opti.solver("ipopt", option)
+            opt_sol = self.opti.solve()
+            sol_time = opt_sol.stats()['t_wall_total']
+            iters = opt_sol.stats()['iter_count']
+            # end_timer = datetime.datetime.now()
+            # delta_timer = end_timer - start_timer
+            # self.solver_times.append(delta_timer.total_seconds())
+            self.iterations.append(iters)
+            print("solver time: ", sol_time)
+            return opt_sol
+        except RuntimeError:
+            return None
