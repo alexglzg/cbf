@@ -26,8 +26,8 @@ class AstarPathGenerator:
         graph = GraphSearch(graph=self._grid, obstacles=obstacles, margin=self._margin)
         path = graph.a_star(sys.get_state()[:2], goal_pos)
         self._global_path = np.array([p.pos for p in path])
-        print(self._global_path)
-        if self._global_path == []:
+        # if self._global_path == []: - for numpy array comparison in python3.6
+        if self._global_path.size == 0:
             print("Global Path not found.")
             sys.exit(1)
         if True:
@@ -50,7 +50,8 @@ class AstarLoSPathGenerator:
         path = graph.reduce_path(path)
         self._global_path = np.array([p.pos for p in path])
         print(self._global_path)
-        if self._global_path == []:
+        # if self._global_path == []:
+        if self._global_path.size == 0:
             print("Global Path not found.")
             sys.exit(1)
         if False:
@@ -72,7 +73,8 @@ class ThetaStarPathGenerator:
         path = graph.theta_star(sys.get_state()[:2], goal_pos)
         self._global_path = np.array([p.pos for p in path])
         print(self._global_path)
-        if self._global_path == []:
+        # if self._global_path == []:
+        if self._global_path.size == 0:
             print("Global Path not found.")
             sys.exit(1)
         if True:
