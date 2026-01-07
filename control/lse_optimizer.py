@@ -23,6 +23,7 @@ class NmpcLseOptimizer:
         self.state = state
 
     def initialize_variables(self, param):
+        # Not different from DCBF as their variables are added in the add_point_to_convex function
         self.variables["x"] = self.opti.variable(4, param.horizon + 1)
         self.variables["u"] = self.opti.variable(2, param.horizon)
 
@@ -56,7 +57,8 @@ class NmpcLseOptimizer:
             )
 
     def add_obstacle_avoidance_constraint(self, param, system, safe_polytope, robot_local_verts):
-        A_safe, b_safe = safe_polytope
+        
+        A_safe, b_safe = safe_polytope # safe_polytope is already in the form of (A, b)
         if A_safe is None or A_safe.shape[0] == 0: 
             return
 
@@ -66,15 +68,15 @@ class NmpcLseOptimizer:
         alpha = ca.log(n_cons) / max_approx
 
         for k in range(param.horizon_dcbf):
-            h_xk = self._compute_lse_val(self.variables["x"][:, k], A_safe, b_safe, verts_local, alpha)
+            h_xk = self._compute_lse_val(self.variables["x"][:, k], A_safe, b_safe, verts_local, max_approx, alpha)
             
             # Predict x_next
             x_next = self.dynamics_opt(self.variables["x"][:, k], self.variables["u"][:, k])
-            h_xk1 = self._compute_lse_val(x_next, A_safe, b_safe, verts_local, alpha)
+            h_xk1 = self._compute_lse_val(x_next, A_safe, b_safe, verts_local, max_approx, alpha)
             
             self.opti.subject_to(h_xk1 >= param.gamma * h_xk + (1 - param.gamma) * max_approx)
 
-    def _compute_lse_val(self, state, A, b, verts_local, alpha):
+    def _compute_lse_val(self, state, A, b, verts_local, margin, alpha):
         # FIX: State index for Kinematic Car is [x, y, v, theta]
         x = state[0]
         y = state[1]
@@ -87,7 +89,8 @@ class NmpcLseOptimizer:
         verts_global = ca.mtimes(R, verts_local) + ca.vertcat(x, y)
         margins = b - ca.mtimes(A, verts_global)
         
-        return smooth_min(ca.vec(margins), alpha)
+        return -ca.logsumexp(ca.vec(-margins), margin)
+        # return smooth_min(ca.vec(margins), alpha) # Change to casadi version of logsumexp
 
     def add_reference_trajectory_tracking_cost(self, param, reference_trajectory):
         self.costs["reference_trajectory_tracking"] = 0
@@ -146,21 +149,38 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 0, "print_time": 1, "expand": True, "ipopt.linear_solver": "ma57"}
+        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": False, "ipopt.linear_solver": "ma27"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx
-        try:
-            # start_timer = datetime.datetime.now()
-            self.opti.solver("ipopt", option)
-            opt_sol = self.opti.solve()
-            sol_time = opt_sol.stats()['t_wall_total']
-            iters = opt_sol.stats()['iter_count']
-            # end_timer = datetime.datetime.now()
-            # delta_timer = end_timer - start_timer
-            # self.solver_times.append(delta_timer.total_seconds())
-            self.iterations.append(iters)
-            print("solver time: ", sol_time)
-            return opt_sol
-        except RuntimeError:
-            return None
+        print("Nr variables: ", self.nr_variables)
+        print("Nr constraints: ", self.nr_constraints)
+
+        # start_timer = datetime.datetime.now()
+        self.opti.solver("ipopt", option)
+        opt_sol = self.opti.solve()
+        sol_time = opt_sol.stats()['t_wall_total']
+        iters = opt_sol.stats()['iter_count']
+        import pdb;pdb.set_trace()
+        # end_timer = datetime.datetime.now()
+        # delta_timer = end_timer - start_timer
+        # self.solver_times.append(delta_timer.total_seconds())
+        self.iterations.append(iters)
+        print("solver time: ", sol_time)
+        return opt_sol
+
+        # try:
+        #     # start_timer = datetime.datetime.now()
+        #     self.opti.solver("ipopt", option)
+        #     opt_sol = self.opti.solve()
+        #     sol_time = opt_sol.stats()['t_wall_total']
+        #     iters = opt_sol.stats()['iter_count']
+        #     import pdb;pdb.set_trace()
+        #     # end_timer = datetime.datetime.now()
+        #     # delta_timer = end_timer - start_timer
+        #     # self.solver_times.append(delta_timer.total_seconds())
+        #     self.iterations.append(iters)
+        #     print("solver time: ", sol_time)
+        #     return opt_sol
+        # except RuntimeError:
+        #     return None

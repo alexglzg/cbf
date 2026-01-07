@@ -137,48 +137,55 @@ class NmpcDbcfOptimizer:
             np.dot(robot_G, self.state.rotation().T),
             np.dot(np.dot(robot_G, self.state.rotation().T), self.state.translation()) + robot_g,
         )
+
+        # print("Safe dist:", safe_dist, " CBF curr:", cbf_curr)
         # filter obstacle if it's still far away
         if cbf_curr > safe_dist:
-            return
-        # duality-cbf constraints
-        lamb = self.opti.variable(mat_A.shape[0], param.horizon_dcbf)
-        mu = self.opti.variable(robot_G.shape[0], param.horizon_dcbf)
-        omega = self.opti.variable(param.horizon, 1)
-        for i in range(param.horizon_dcbf):
-            robot_R = ca.hcat(
-                [
-                    ca.vcat(
-                        [
-                            ca.cos(self.variables["x"][3, i + 1]),
-                            ca.sin(self.variables["x"][3, i + 1]),
-                        ]
-                    ),
-                    ca.vcat(
-                        [
-                            -ca.sin(self.variables["x"][3, i + 1]),
-                            ca.cos(self.variables["x"][3, i + 1]),
-                        ]
-                    ),
-                ]
-            )
-            robot_T = self.variables["x"][0:2, i + 1]
-            self.opti.subject_to(lamb[:, i] >= 0)
-            self.opti.subject_to(mu[:, i] >= 0)
-            self.opti.subject_to(
-                -ca.mtimes(robot_g.T, mu[:, i]) + ca.mtimes((ca.mtimes(mat_A, robot_T) - vec_b).T, lamb[:, i])
-                >= omega[i] * param.gamma ** (i + 1) * (cbf_curr - param.margin_dist) + param.margin_dist
-            )
-            self.opti.subject_to(
-                ca.mtimes(robot_G.T, mu[:, i]) + ca.mtimes(ca.mtimes(robot_R.T, mat_A.T), lamb[:, i]) == 0
-            )
-            temp = ca.mtimes(mat_A.T, lamb[:, i])
-            self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
-            self.opti.subject_to(omega[i] >= 0)
-            self.costs["decay_rate_relaxing"] += param.pomega * (omega[i] - 1) ** 2
-            # warm start
-            self.opti.set_initial(lamb[:, i], lamb_curr)
-            self.opti.set_initial(mu[:, i], mu_curr)
-            self.opti.set_initial(omega[i], 0.1)
+            return 0
+        
+        else:
+            # print("Adding DCBF convex to convex constraint")
+            # duality-cbf constraints
+            lamb = self.opti.variable(mat_A.shape[0], param.horizon_dcbf)
+            mu = self.opti.variable(robot_G.shape[0], param.horizon_dcbf)
+            omega = self.opti.variable(param.horizon, 1)
+            for i in range(param.horizon_dcbf):
+                robot_R = ca.hcat(
+                    [
+                        ca.vcat(
+                            [
+                                ca.cos(self.variables["x"][3, i + 1]),
+                                ca.sin(self.variables["x"][3, i + 1]),
+                            ]
+                        ),
+                        ca.vcat(
+                            [
+                                -ca.sin(self.variables["x"][3, i + 1]),
+                                ca.cos(self.variables["x"][3, i + 1]),
+                            ]
+                        ),
+                    ]
+                )
+                robot_T = self.variables["x"][0:2, i + 1]
+                self.opti.subject_to(lamb[:, i] >= 0)
+                self.opti.subject_to(mu[:, i] >= 0)
+                self.opti.subject_to(
+                    -ca.mtimes(robot_g.T, mu[:, i]) + ca.mtimes((ca.mtimes(mat_A, robot_T) - vec_b).T, lamb[:, i])
+                    >= omega[i] * param.gamma ** (i + 1) * (cbf_curr - param.margin_dist) + param.margin_dist
+                )
+                self.opti.subject_to(
+                    ca.mtimes(robot_G.T, mu[:, i]) + ca.mtimes(ca.mtimes(robot_R.T, mat_A.T), lamb[:, i]) == 0
+                )
+                temp = ca.mtimes(mat_A.T, lamb[:, i])
+                self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
+                self.opti.subject_to(omega[i] >= 0)
+                self.costs["decay_rate_relaxing"] += param.pomega * (omega[i] - 1) ** 2
+                # warm start
+                self.opti.set_initial(lamb[:, i], lamb_curr)
+                self.opti.set_initial(mu[:, i], mu_curr)
+                self.opti.set_initial(omega[i], 0.1)
+
+            return 1
 
     def add_obstacle_avoidance_constraint(self, param, system, obstacles_geo):
         self.costs["decay_rate_relaxing"] = 0
@@ -186,13 +193,18 @@ class NmpcDbcfOptimizer:
         # TODO: move safe dist inside attribute `system`
         safe_dist = system._dynamics.safe_dist(system._state._x, 0.1, -1.0, 1.0, param.margin_dist)
         robot_components = system._geometry.equiv_rep()
+        self.constr_cnt = 0
+
         for obs_geo in obstacles_geo:
             for robot_comp in robot_components:
                 # TODO: need to add case for `add_point_convex_constraint()`
                 if isinstance(robot_comp, ConvexRegion2D):
-                    self.add_convex_to_convex_constraint(param, robot_comp, obs_geo, safe_dist)
+                    cnt = self.add_convex_to_convex_constraint(param, robot_comp, obs_geo, safe_dist)
+                    self.constr_cnt += cnt
                 else:
                     raise NotImplementedError()
+
+        print("Nr DCBF constraints added: ", self.constr_cnt)
 
     def add_warm_start(self, param, system):
         # TODO: wrap params
@@ -207,7 +219,7 @@ class NmpcDbcfOptimizer:
         self.initialize_variables(param)
         self.add_initial_condition_constraint()
         self.add_input_constraint(param)
-        # self.add_input_derivative_constraint(param)
+        self.add_input_derivative_constraint(param)
         self.add_dynamics_constraint(param)
         self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
         self.add_input_stage_cost(param)
@@ -233,6 +245,7 @@ class NmpcDbcfOptimizer:
             opt_sol = self.opti.solve()
             sol_time = opt_sol.stats()['t_wall_total']
             iters = opt_sol.stats()['iter_count']
+            # import pdb;pdb.set_trace()
             # end_timer = datetime.datetime.now()
             # delta_timer = end_timer - start_timer
             # self.solver_times.append(delta_timer.total_seconds())
