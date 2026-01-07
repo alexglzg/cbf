@@ -239,6 +239,25 @@ class NmpcDbcfOptimizer:
         self.nr_variables = self.opti.nx
         print("Nr variables: ", self.nr_variables)
         print("Nr constraints: ", self.nr_constraints)
+
+        ### Plot sparisty pattern
+        opti = self.opti
+        J = ca.jacobian(opti.g, opti.x).sparsity()
+        lag = opti.f + ca.dot(opti.lam_g, opti.g)
+        H = ca.hessian(lag, opti.x)[0].sparsity()
+        import matplotlib.pylab as plt
+
+        plt.subplots(1, 2, figsize=(10, 4))
+        plt.subplot(1, 2, 1)
+        plt.spy(np.array(J))
+        plt.title("Jacobian Sparsity dcbf")
+
+        plt.subplot(1, 2, 2)
+        plt.spy(np.array(H))
+        plt.title("Hessian Sparsity dcbf")
+
+        plt.show(block=True)
+        
         try:
             # start_timer = datetime.datetime.now()
             self.opti.solver("ipopt", option)

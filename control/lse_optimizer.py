@@ -89,8 +89,9 @@ class NmpcLseOptimizer:
         verts_global = ca.mtimes(R, verts_local) + ca.vertcat(x, y)
         margins = b - ca.mtimes(A, verts_global)
         
-        return -ca.logsumexp(ca.vec(-margins), margin)
-        # return smooth_min(ca.vec(margins), alpha) # Change to casadi version of logsumexp
+        # return -ca.logsumexp(ca.vec(-margins), margin)
+        # return ca.mmin(ca.vec(margins))
+        return smooth_min(ca.vec(margins), alpha) # Change to casadi version of logsumexp
 
     def add_reference_trajectory_tracking_cost(self, param, reference_trajectory):
         self.costs["reference_trajectory_tracking"] = 0
@@ -149,12 +150,29 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": False, "ipopt.linear_solver": "ma27"}
+        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "ma27"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx
         print("Nr variables: ", self.nr_variables)
         print("Nr constraints: ", self.nr_constraints)
+
+        ### Plot sparisty pattern
+        opti = self.opti
+        J = ca.jacobian(opti.g, opti.x).sparsity()
+        lag = opti.f + ca.dot(opti.lam_g, opti.g)
+        H = ca.hessian(lag, opti.x)[0].sparsity()
+        import matplotlib.pylab as plt
+
+        plt.subplots(1, 2, figsize=(10, 4))
+        plt.subplot(1, 2, 1)
+        plt.spy(np.array(J))
+        plt.title("Jacobian Sparsity lse")
+
+        plt.subplot(1, 2, 2)
+        plt.spy(np.array(H))
+        plt.title("Hessian Sparsity lse")
+        plt.show(block=True)
 
         # start_timer = datetime.datetime.now()
         self.opti.solver("ipopt", option)
