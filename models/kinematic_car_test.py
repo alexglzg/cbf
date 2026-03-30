@@ -6,6 +6,12 @@ from matplotlib import animation
 import matplotlib as mpl
 import statistics as st
 
+import sys
+import os
+
+# Add the parent directory (cbf) to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from control.dcbf_optimizer import NmpcDcbfOptimizerParam
 from control.dcbf_controller import NmpcDcbfController
 from control.lse_optimizer import NmpcLseOptimizer
@@ -35,6 +41,12 @@ from planning.trajectory_generator.constant_speed_generator import (
     ConstantSpeedTrajectoryGenerator,
 )
 from sim.simulation import Robot, SingleAgentSimulation
+
+def read_json(dir, file):
+    import json
+    with open(dir + file, 'r') as f:
+        data = json.load(f)
+    return data
 
 
 def plot_world(simulation, snapshot_indexes, figure_name="world", local_traj_indexes=[], maze_type=None):
@@ -179,8 +191,13 @@ def kinematic_car_pentagon_simulation_test():
     animate_world(sim, animation_name="pentagon")
 
 
-def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_type):
-    start_pos, goal_pos, grid, obstacles = create_env(maze_type)
+def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_type, polytopes = []):
+
+    # New code that get environments from input
+    start_pos, goal_pos, grid, obstacles = create_env_benchmark(polytopes)
+
+    # Old code with hard-coded environments
+    # start_pos, goal_pos, grid, obstacles = create_env(maze_type)
     geometry_regions = KinematicCarMultipleGeometry()
 
     if robot_shape == "rectangle":
@@ -262,6 +279,23 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
     plot_world(sim, robot_indexes, figure_name=name, local_traj_indexes=traj_indexes, maze_type=maze_type)
     animate_world(sim, animation_name=name, maze_type=maze_type)
 
+def create_env_benchmark(polytopes):
+    if polytopes:
+        start = np.array([0.0, 0.0, 0.0])
+        goal = np.array([25.0, 20.0])
+
+        bounds = ((0.0, 0.0), (30.0, 25.0))
+        cell_size = 0.1
+        grid = (bounds, cell_size)
+        obstacles = []
+        for poly in polytopes:
+            mat_A = []
+            vec_b = []
+            for hp in poly:
+                mat_A.append(hp[0:2])
+                vec_b.append(hp[2])
+            obstacles.append(PolytopeRegion(mat_A=np.array(mat_A), vec_b=np.array(vec_b)))
+        return start, goal, grid, obstacles
 
 def create_env(env_type):
     if env_type == "s_path":
@@ -303,7 +337,7 @@ def create_env(env_type):
         obstacles.append(RectangleRegion(13.0 * s, 14.0 * s, -1.0 * s, 7.0 * s))
         return start, goal, grid, obstacles
     elif env_type == "oblique_maze":
-        s = 0.15  # scale of environemtn
+        s = 0.15  # scale of environment
         start = np.array([1.0 * s, 1.5 * s, 0.0])
         goal = np.array([8.5 * s, 6.5 * s])
         bounds = ((0.0 * s, 1.0 * s), (10.0 * s, 7.0 * s))
@@ -346,9 +380,14 @@ if __name__ == "__main__":
     # maze_types = ["maze", "oblique_maze"]
     robot_shapes = ["rectangle"]
     # robot_shapes = ["triangle", "rectangle", "pentagon", "lshape"]
+    dir = '/home/ttamr/Documents/embeddedcbf/benchmark/envs/'
+    file = 'env0.json'
+    env_data = read_json(dir, file)
+    polytopes = env_data['halfplanes']
+
     for maze_type in maze_types:
         for robot_shape in robot_shapes:
-            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf")
-            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "lse")
+            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
+            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "lse", polytopes)
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

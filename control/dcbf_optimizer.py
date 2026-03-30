@@ -233,30 +233,30 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 0, "print_time": 1, "expand": True, "ipopt.linear_solver": "ma57"}
+        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx
         print("Nr variables: ", self.nr_variables)
         print("Nr constraints: ", self.nr_constraints)
 
-        ### Plot sparisty pattern
-        opti = self.opti
-        J = ca.jacobian(opti.g, opti.x).sparsity()
-        lag = opti.f + ca.dot(opti.lam_g, opti.g)
-        H = ca.hessian(lag, opti.x)[0].sparsity()
-        import matplotlib.pylab as plt
+        # ### Plot sparisty pattern
+        # opti = self.opti
+        # J = ca.jacobian(opti.g, opti.x).sparsity()
+        # lag = opti.f + ca.dot(opti.lam_g, opti.g)
+        # H = ca.hessian(lag, opti.x)[0].sparsity()
+        # import matplotlib.pylab as plt
 
-        plt.subplots(1, 2, figsize=(10, 4))
-        plt.subplot(1, 2, 1)
-        plt.spy(np.array(J))
-        plt.title("Jacobian Sparsity dcbf")
+        # plt.subplots(1, 2, figsize=(10, 4))
+        # plt.subplot(1, 2, 1)
+        # plt.spy(np.array(J))
+        # plt.title("Jacobian Sparsity dcbf")
 
-        plt.subplot(1, 2, 2)
-        plt.spy(np.array(H))
-        plt.title("Hessian Sparsity dcbf")
+        # plt.subplot(1, 2, 2)
+        # plt.spy(np.array(H))
+        # plt.title("Hessian Sparsity dcbf")
 
-        plt.show(block=True)
+        # plt.show(block=True)
         
         try:
             # start_timer = datetime.datetime.now()
