@@ -194,7 +194,7 @@ def kinematic_car_pentagon_simulation_test():
 def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_type, polytopes = []):
 
     # New code that get environments from input
-    start_pos, goal_pos, grid, obstacles = create_env_benchmark(polytopes)
+    start_pos, goal_pos, grid, obstacles = create_env_benchmark(polytopes, scale_factor=0.1)
 
     # Old code with hard-coded environments
     # start_pos, goal_pos, grid, obstacles = create_env(maze_type)
@@ -266,7 +266,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
         opt_param.terminal_weight = 2.0
     if controller_type == "dcbf":
         robot.set_controller(NmpcDcbfController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
-    elif controller_type == "lse":
+    elif controller_type == "pipcbf":
         robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
     sim = SingleAgentSimulation(robot, obstacles, goal_pos)
     sim.run_navigation(30.0)
@@ -279,21 +279,25 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
     plot_world(sim, robot_indexes, figure_name=name, local_traj_indexes=traj_indexes, maze_type=maze_type)
     animate_world(sim, animation_name=name, maze_type=maze_type)
 
-def create_env_benchmark(polytopes):
+def create_env_benchmark(polytopes, scale_factor=1.0):
     if polytopes:
         start = np.array([0.0, 0.0, 0.0])
-        goal = np.array([25.0, 20.0])
+        goal = np.array([25.0, 20.0]) * scale_factor
 
-        bounds = ((0.0, 0.0), (30.0, 25.0))
-        cell_size = 0.1
-        grid = (bounds, cell_size)
+        # Scale the boundaries and the resolution (cell_size)
+        original_bounds = np.array([[0.0, 0.0], [30.0, 25.0]])
+        scaled_bounds = tuple(map(tuple, original_bounds * scale_factor))
+        
+        scaled_cell_size = round(0.1 * scale_factor, 4)
+        grid = (scaled_bounds, scaled_cell_size)
+
         obstacles = []
         for poly in polytopes:
             mat_A = []
             vec_b = []
             for hp in poly:
                 mat_A.append(hp[0:2])
-                vec_b.append(hp[2])
+                vec_b.append(hp[2] * scale_factor)
             obstacles.append(PolytopeRegion(mat_A=np.array(mat_A), vec_b=np.array(vec_b)))
         return start, goal, grid, obstacles
 
@@ -387,7 +391,7 @@ if __name__ == "__main__":
 
     for maze_type in maze_types:
         for robot_shape in robot_shapes:
-            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
-            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "lse", polytopes)
+            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
+            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "pipcbf", polytopes)
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

@@ -4,7 +4,7 @@ from matplotlib.patches import Polygon, Rectangle
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 
 from control.dcbf_optimizer import NmpcDbcfOptimizer, NmpcDcbfOptimizerParam
-from control.firi_polytope import FIRI
+from control.firi_polytope_old import FIRI
 
 # Set to True to enable plotting
 DEBUG_VIS = True

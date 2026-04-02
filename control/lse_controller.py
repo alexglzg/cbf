@@ -3,7 +3,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Rectangle
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 
-from control.firi_polytope import FIRI
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from control.firi import FIRISolver
+# from control.firi_polytope_old import FIRI
 from control.lse_optimizer import NmpcLseOptimizer
 
 DEBUG_VIS = True
@@ -11,13 +16,31 @@ DEBUG_VIS = True
 class NmpcLseController:
     def __init__(self, dynamics, opt_param):
         self._param = opt_param
-        self._firi = FIRI()
+        # self._firi = FIRI()
+        self.firi_solver = FIRISolver(
+            sdmn_seed=42,
+            mvie_outer_iters=20,
+            mvie_inner_iters=10,
+            mvie_mu=4.0,
+        )
         self._optimizer = NmpcLseOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
         self._opt_sol = None
         self._fig = None
 
+    def extract_obstacles_halfplanes(self, obstacles):
+        obs_hps_list = []
+        for obs in obstacles:
+            temp = []
+            if hasattr(obs, 'get_convex_rep'):
+                A, b = obs.get_convex_rep()
+                for i in range(A.shape[0]):
+                    temp.append(np.array([A[i][0], A[i][1], b[i][0]]))
+            obs_hps_list.append(temp)
+        return obs_hps_list
+
     def generate_control_input(self, system, global_path, local_trajectory, obstacles):
         obs_verts_list = extract_obstacle_vertices(obstacles)
+        obs_hps_list = self.extract_obstacles_halfplanes(obstacles)
         
         if hasattr(system._geometry, 'equiv_rep'):
             robot_components = system._geometry.equiv_rep()
@@ -37,7 +60,7 @@ class NmpcLseController:
             if v_local is not None:
                 all_local_verts.append(v_local)
                 v_global = (v_local @ R.T) + np.array([x, y])
-                seed_verts_list.append(v_global)
+                seed_verts_list.extend(v_global)
         
         if seed_verts_list:
             seed_poly = np.vstack(seed_verts_list)
@@ -49,13 +72,30 @@ class NmpcLseController:
         else:
             robot_local_verts = np.zeros((1, 2))
 
-        # Local BBox (Square 4x4 around robot)
-        bbox = (x-2.0, x+2.0, y-2.0, y+2.0)
+        # Local BBox (Square 4x4 around robot) as list of halfplanes [normal, offset]
+        bbox_x_min, bbox_x_max = x - 2.0, x + 2.0
+        bbox_y_min, bbox_y_max = y - 2.0, y + 2.0
+        bbox = [
+            [-1, 0, -bbox_x_min],   # x >= x_min
+            [1, 0, bbox_x_max],      # x <= x_max
+            [0, -1, -bbox_y_min],    # y >= y_min
+            [0, 1, bbox_y_max]       # y <= y_max
+        ]
         
-        A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
+        # Compute best ellipsoid, and polytope
+        firi_result = self.firi_solver.compute_from_halfplanes(obs_hps_list, seed_verts_list, bbox, max_iter=5, rho=0.02)
+        # firi_result = self.firi_solver.compute(vertex_obstacles, seed_verts_list, bbox, max_iter=5, rho=0.02, polytope_mode=True)
+
+        # Get A and b from the FIRI result
+        A_safe = np.vstack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in firi_result.planes])
+        b_safe = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in firi_result.planes])
+
+        # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
         if DEBUG_VIS:
-            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox)
+            # Convert bbox halfplanes to tuple format for visualization
+            bbox_tuple = (bbox_x_min, bbox_x_max, bbox_y_min, bbox_y_max)
+            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple)
 
         self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts)
         self._opt_sol = self._optimizer.solve_nlp()

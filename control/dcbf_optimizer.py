@@ -233,7 +233,7 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
+        option = {"verbose": False, "ipopt.print_level": 0, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx

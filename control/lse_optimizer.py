@@ -67,14 +67,37 @@ class NmpcLseOptimizer:
         n_cons = A_safe.shape[0] * verts_local.shape[1]
         alpha = ca.log(n_cons) / max_approx
 
+        # All constraints, not via LSE
+        print("shape of A: ", A_safe.shape)
         for k in range(param.horizon_dcbf):
-            h_xk = self._compute_lse_val(self.variables["x"][:, k], A_safe, b_safe, verts_local, max_approx, alpha)
-            
-            # Predict x_next
+            rob_vertices_xk = self.robot_vertices_ca(self.variables['x'][:, k], verts_local)
             x_next = self.dynamics_opt(self.variables["x"][:, k], self.variables["u"][:, k])
-            h_xk1 = self._compute_lse_val(x_next, A_safe, b_safe, verts_local, max_approx, alpha)
+            rob_vertices_xk1 = self.robot_vertices_ca(x_next, verts_local)
+            print("shape of rob_vertices_xk: ", rob_vertices_xk.shape)
+            for j in range(rob_vertices_xk.shape[0]):
+                for l in range(A_safe.shape[0]):
+                    dist_xk = ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T) - b_safe[l]
+                    dist_xk1 = ca.dot(ca.MX(A_safe[l]), rob_vertices_xk1[j, :].T) - b_safe[l]
+                    self.opti.subject_to(dist_xk1 >= param.gamma*dist_xk)
+
+        # # OLD LSE version
+        # for k in range(param.horizon_dcbf):
+        #     h_xk = self._compute_lse_val(self.variables["x"][:, k], A_safe, b_safe, verts_local, max_approx, alpha)
             
-            self.opti.subject_to(h_xk1 >= param.gamma * h_xk + (1 - param.gamma) * max_approx)
+        #     # Predict x_next
+        #     x_next = self.dynamics_opt(self.variables["x"][:, k], self.variables["u"][:, k])
+        #     h_xk1 = self._compute_lse_val(x_next, A_safe, b_safe, verts_local, max_approx, alpha)
+            
+        #     self.opti.subject_to(h_xk1 >= param.gamma * h_xk + (1 - param.gamma) * max_approx)
+
+    def robot_vertices_ca(self, state, verts_local):
+        x = state[0]
+        y = state[1]
+        theta = state[3]
+        c, s = ca.cos(theta), ca.sin(theta)
+        R = ca.vertcat(ca.horzcat(c, -s), ca.horzcat(s, c))
+        verts_global = ca.mtimes(R, verts_local) + ca.vertcat(x, y)
+        return verts_global.T
 
     def _compute_lse_val(self, state, A, b, verts_local, margin, alpha):
         # FIX: State index for Kinematic Car is [x, y, v, theta]
@@ -150,7 +173,7 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "ma27"}
+        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx
