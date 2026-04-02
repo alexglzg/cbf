@@ -76,8 +76,8 @@ class NmpcLseOptimizer:
             print("shape of rob_vertices_xk: ", rob_vertices_xk.shape)
             for j in range(rob_vertices_xk.shape[0]):
                 for l in range(A_safe.shape[0]):
-                    dist_xk = ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T) - b_safe[l]
-                    dist_xk1 = ca.dot(ca.MX(A_safe[l]), rob_vertices_xk1[j, :].T) - b_safe[l]
+                    dist_xk = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T)
+                    dist_xk1 = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk1[j, :].T)
                     self.opti.subject_to(dist_xk1 >= param.gamma*dist_xk)
 
         # # OLD LSE version
@@ -202,7 +202,7 @@ class NmpcLseOptimizer:
         opt_sol = self.opti.solve()
         sol_time = opt_sol.stats()['t_wall_total']
         iters = opt_sol.stats()['iter_count']
-        import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         # end_timer = datetime.datetime.now()
         # delta_timer = end_timer - start_timer
         # self.solver_times.append(delta_timer.total_seconds())

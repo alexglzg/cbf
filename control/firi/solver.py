@@ -54,7 +54,8 @@ class HalfPlane:
 
     def contains(self, p: np.ndarray) -> bool:
         """True iff *p* satisfies this halfplane (with small tolerance)."""
-        return float(self.normal.dot(p)) <= self.offset + 1e-9
+        # return float(self.normal.dot(p)) <= self.offset + 1e-9
+        return -1e-6 <= float(self.normal.dot(p)) - self.offset <= 1e-6
 
     def point_on_plane(self) -> np.ndarray:
         """A point lying on the boundary hyperplane."""
@@ -518,7 +519,11 @@ class FIRISolver:
 
     # ── Helpers ───────────────────────────────────────────────────────
 
-    def _remove_redundant_planes(self, planes: List[HalfPlane], center: np.ndarray) -> List[HalfPlane]:
+    def _halfplane_contains_point(self, point: List, halfplane: List):
+        """True iff *p* satisfies this halfplane (with small tolerance)."""
+        return -1e-6 <= float(np.dot(halfplane[0:2], point)) - halfplane[2] <= 1e-6
+
+    def _remove_redundant_planes(self, planes: List[HalfPlane] | List[List], center: np.ndarray) -> List[HalfPlane]:
         """
         Remove redundant halfplanes from the polytope.
         A halfplane is redundant if it's implied by the others
@@ -536,25 +541,31 @@ class FIRISolver:
         
         from scipy.spatial import ConvexHull, HalfspaceIntersection
         
-        try:
-            A_full = np.stack([hp.normal for hp in planes])
-            b_full = np.array([hp.offset for hp in planes])
-            halfspaces = np.column_stack((A_full, -b_full))
-            
-            hs = HalfspaceIntersection(halfspaces, center)
-            verts = hs.intersections[ConvexHull(hs.intersections).vertices]
-        except Exception as e:
-            # If we can't compute the full polytope, return as-is
-            return planes
+        # try:
+        A_full = np.stack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in planes])
+        b_full = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in planes])
+        halfspaces = np.column_stack((A_full, -b_full))
+        
+        hs = HalfspaceIntersection(halfspaces, center)
+        verts = hs.intersections[ConvexHull(hs.intersections).vertices]
+        # except Exception as e:
+        #     # If we can't compute the full polytope, return as-is
+        #     return planes
         
         # Test each plane for redundancy
         non_redundant = []
         for hp_test in planes:
             # Check if all vertices satisfy this halfplane
-            if not all(hp_test.contains(v) for v in verts):
-                # This plane is NOT redundant
-                non_redundant.append(hp_test)
-        
+            if hasattr(hp_test, 'normal'):
+                print([hp_test.contains(v) for v in verts])
+                if any([hp_test.contains(v) for v in verts]):
+                    # This plane is NOT redundant
+                    non_redundant.append(hp_test)
+            else:
+                print([self._halfplane_contains_point(v, hp_test) for v in verts])
+                if any([self._halfplane_contains_point(v, hp_test) for v in verts]):
+                    non_redundant.append(hp_test)
+                            
         return non_redundant if non_redundant else planes
 
     @staticmethod
