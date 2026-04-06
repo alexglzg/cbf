@@ -391,7 +391,7 @@ if __name__ == "__main__":
 
     for maze_type in maze_types:
         for robot_shape in robot_shapes:
-            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
-            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "pipcbf", polytopes)
+            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
+            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "pipcbf", polytopes)
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

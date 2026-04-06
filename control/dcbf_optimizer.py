@@ -28,106 +28,141 @@ class NmpcDbcfOptimizer:
         self.dynamics_opt = dynamics_opt
         self.solver_times = []
         self.iterations = []
+        # Stage-wise storage for Fatrop (block diagonal structure)
+        self.x = []      # x_0, x_1, ..., x_N
+        self.u = []      # u_0, u_1, ..., u_{N-1}
 
     def set_state(self, state):
         self.state = state
 
     def initialize_variables(self, param):
-        self.variables["x"] = self.opti.variable(4, param.horizon + 1)
-        self.variables["u"] = self.opti.variable(2, param.horizon)
+        """Initialize variables in true stage-wise format."""
+        self.x = []
+        self.u = []
+        
+        # Initial state (fixed)
+        self.x.append(self.opti.parameter(4, 1))
+        
+        # Create stage variables: [x_k, u_k] for k=0..N-1
+        for k in range(param.horizon):
+            u_k = self.opti.variable(2, 1)
+            x_kp1 = self.opti.variable(4, 1)
+            self.u.append(u_k)
+            self.x.append(x_kp1)
 
     def add_initial_condition_constraint(self):
-        self.opti.subject_to(self.variables["x"][:, 0] == self.state._x)
+        """Set initial state value."""
+        self.opti.set_value(self.x[0], self.state._x)
 
     def add_input_constraint(self, param):
-        # TODO: wrap params
+        """Add input box constraints - local to each stage."""
         amin, amax = -0.5, 0.5
         omegamin, omegamax = -0.5, 0.5
-        for i in range(param.horizon):
-            # input constraints
-            self.opti.subject_to(self.variables["u"][0, i] <= amax)
-            self.opti.subject_to(amin <= self.variables["u"][0, i])
-            self.opti.subject_to(self.variables["u"][1, i] <= omegamax)
-            self.opti.subject_to(omegamin <= self.variables["u"][1, i])
+        for k in range(len(self.u)):
+            u_k = self.u[k]
+            self.opti.subject_to(amin <= u_k[0])
+            self.opti.subject_to(u_k[0] <= amax)
+            self.opti.subject_to(omegamin <= u_k[1])
+            self.opti.subject_to(u_k[1] <= omegamax)
 
     def add_input_derivative_constraint(self, param):
-        # TODO: Remove this hardcoded function with timestep
+        """Add input rate constraints - coupling adjacent stages."""
         jerk_min, jerk_max = -1.0, 1.0
         omegadot_min, omegadot_max = -0.5, 0.5
-        for i in range(param.horizon - 1):
-            # input constraints
-            self.opti.subject_to(self.variables["u"][0, i + 1] - self.variables["u"][0, i] <= jerk_max)
-            self.opti.subject_to(self.variables["u"][0, i + 1] - self.variables["u"][0, i] >= jerk_min)
-            self.opti.subject_to(self.variables["u"][1, i + 1] - self.variables["u"][1, i] <= omegadot_max)
-            self.opti.subject_to(self.variables["u"][1, i + 1] - self.variables["u"][1, i] >= omegadot_min)
-        self.opti.subject_to(self.variables["u"][0, 0] - self.state._u[0] <= jerk_max)
-        self.opti.subject_to(self.variables["u"][0, 0] - self.state._u[0] >= jerk_min)
-        self.opti.subject_to(self.variables["u"][1, 0] - self.state._u[1] <= omegadot_max)
-        self.opti.subject_to(self.variables["u"][1, 0] - self.state._u[1] >= omegadot_min)
+        
+        # First stage relative to previous input
+        self.opti.subject_to(self.opti.bounded(jerk_min, self.u[0][0] - self.state._u[0], jerk_max))
+        self.opti.subject_to(self.opti.bounded(omegadot_min, self.u[0][1] - self.state._u[1], omegadot_max))
+        
+        # Rate constraints between stages
+        for k in range(len(self.u) - 1):
+            self.opti.subject_to(self.opti.bounded(jerk_min, self.u[k+1][0] - self.u[k][0], jerk_max))
+            self.opti.subject_to(self.opti.bounded(omegadot_min, self.u[k+1][1] - self.u[k][1], omegadot_max))
 
     def add_dynamics_constraint(self, param):
-        for i in range(param.horizon):
-            self.opti.subject_to(
-                self.variables["x"][:, i + 1] == self.dynamics_opt(self.variables["x"][:, i], self.variables["u"][:, i])
-            )
+        """Add dynamics as stage coupling: x_{k+1} = f(x_k, u_k)."""
+        for k in range(len(self.u)):
+            x_k = self.x[k]
+            u_k = self.u[k]
+            x_kp1_pred = self.dynamics_opt(x_k, u_k)
+            # This is the only coupling between stages
+            self.opti.subject_to(self.x[k+1] == x_kp1_pred)
 
     def add_reference_trajectory_tracking_cost(self, param, reference_trajectory):
+        """Add reference tracking costs - each stage independent."""
         self.costs["reference_trajectory_tracking"] = 0
-        for i in range(param.horizon - 1):
-            x_diff = self.variables["x"][:, i] - reference_trajectory[i, :]
+        for k in range(len(self.x)):
+            x_k = self.x[k]
+            x_diff = x_k - reference_trajectory[k, :]
             self.costs["reference_trajectory_tracking"] += ca.mtimes(x_diff.T, ca.mtimes(param.mat_Q, x_diff))
-        x_diff = self.variables["x"][:, -1] - reference_trajectory[-1, :]
+        
+        # Terminal cost
+        x_terminal = self.x[-1]
+        x_diff = x_terminal - reference_trajectory[-1, :]
         self.costs["reference_trajectory_tracking"] += param.terminal_weight * ca.mtimes(
             x_diff.T, ca.mtimes(param.mat_Q, x_diff)
         )
 
     def add_input_stage_cost(self, param):
+        """Add input costs - each stage independent."""
         self.costs["input_stage"] = 0
-        for i in range(param.horizon):
+        for k in range(len(self.u)):
+            u_k = self.u[k]
             self.costs["input_stage"] += ca.mtimes(
-                self.variables["u"][:, i].T, ca.mtimes(param.mat_R, self.variables["u"][:, i])
+                u_k.T, ca.mtimes(param.mat_R, u_k)
             )
 
     def add_prev_input_cost(self, param):
+        """Penalize deviation from previous input - only first stage."""
         self.costs["prev_input"] = 0
-        self.costs["prev_input"] += ca.mtimes(
-            (self.variables["u"][:, 0] - self.state._u).T,
-            ca.mtimes(param.mat_Rold, (self.variables["u"][:, 0] - self.state._u)),
-        )
+        if len(self.u) > 0:
+            u_0 = self.u[0]
+            self.costs["prev_input"] = ca.mtimes(
+                (u_0 - self.state._u).T,
+                ca.mtimes(param.mat_Rold, (u_0 - self.state._u)),
+            )
 
     def add_input_smoothness_cost(self, param):
+        """Add input smoothness costs - couple adjacent stages."""
         self.costs["input_smoothness"] = 0
-        for i in range(param.horizon - 1):
+        for k in range(len(self.u) - 1):
+            u_k = self.u[k]
+            u_kp1 = self.u[k+1]
             self.costs["input_smoothness"] += ca.mtimes(
-                (self.variables["u"][:, i + 1] - self.variables["u"][:, i]).T,
-                ca.mtimes(param.mat_dR, (self.variables["u"][:, i + 1] - self.variables["u"][:, i])),
+                (u_kp1 - u_k).T,
+                ca.mtimes(param.mat_dR, (u_kp1 - u_k)),
             )
 
     def add_point_to_convex_constraint(self, param, obs_geo, safe_dist):
+        """Add DCBF constraint for point-to-convex - local to each stage."""
         # get current value of cbf
         mat_A, vec_b = obs_geo.get_convex_rep()
         cbf_curr, lamb_curr = get_dist_point_to_region(self.state._x[0:2], mat_A, vec_b)
         # filter obstacle if it's still far away
         if cbf_curr > safe_dist:
             return
-        # duality-cbf constraints
-        lamb = self.opti.variable(mat_A.shape[0], param.horizon_dcbf)
-        omega = self.opti.variable(param.horizon_dcbf, 1)
-        for i in range(param.horizon_dcbf):
-            self.opti.subject_to(lamb[:, i] >= 0)
+        
+        # duality-cbf constraints - one per stage
+        for k in range(min(param.horizon_dcbf, len(self.x))):
+            lamb = self.opti.variable(mat_A.shape[0], 1)
+            omega = self.opti.variable(1, 1)
+            
+            x_k = self.x[k]
+            self.opti.subject_to(lamb >= 0)
             self.opti.subject_to(
-                ca.mtimes((ca.mtimes(mat_A, self.variables["x"][0:2, i + 1]) - vec_b).T, lamb[:, i])
-                >= omega[i] * param.gamma ** (i + 1) * (cbf_curr - param.margin_dist) + param.margin_dist
+                ca.mtimes((ca.mtimes(mat_A, x_k[0:2]) - vec_b).T, lamb)
+                >= omega * param.gamma ** k * (cbf_curr - param.margin_dist) + param.margin_dist
             )
-            temp = ca.mtimes(mat_A.T, lamb[:, i])
+            temp = ca.mtimes(mat_A.T, lamb)
             self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
-            self.opti.subject_to(omega[i] >= 0)
-            self.costs["decay_rate_relaxing"] += param.pomega * (omega[i] - 1) ** 2
+            self.opti.subject_to(omega >= 0)
+            self.costs["decay_rate_relaxing"] += param.pomega * (omega - 1) ** 2
             # warm start
-            self.opti.set_initial(lamb[:, i], lamb_curr)
-            self.opti.set_initial(omega[i], 0.1)
+            self.opti.set_initial(lamb, lamb_curr)
+            self.opti.set_initial(omega, 0.1)
 
     def add_convex_to_convex_constraint(self, param, robot_geo, obs_geo, safe_dist):
+        """Add DCBF constraint for convex-to-convex - local to each stage."""
         mat_A, vec_b = obs_geo.get_convex_rep()
         robot_G, robot_g = robot_geo.get_convex_rep()
         # get current value of cbf
@@ -138,54 +173,53 @@ class NmpcDbcfOptimizer:
             np.dot(np.dot(robot_G, self.state.rotation().T), self.state.translation()) + robot_g,
         )
 
-        # print("Safe dist:", safe_dist, " CBF curr:", cbf_curr)
         # filter obstacle if it's still far away
         if cbf_curr > safe_dist:
             return 0
         
-        else:
-            # print("Adding DCBF convex to convex constraint")
-            # duality-cbf constraints
-            lamb = self.opti.variable(mat_A.shape[0], param.horizon_dcbf)
-            mu = self.opti.variable(robot_G.shape[0], param.horizon_dcbf)
-            omega = self.opti.variable(param.horizon, 1)
-            for i in range(param.horizon_dcbf):
-                robot_R = ca.hcat(
-                    [
-                        ca.vcat(
-                            [
-                                ca.cos(self.variables["x"][3, i + 1]),
-                                ca.sin(self.variables["x"][3, i + 1]),
-                            ]
-                        ),
-                        ca.vcat(
-                            [
-                                -ca.sin(self.variables["x"][3, i + 1]),
-                                ca.cos(self.variables["x"][3, i + 1]),
-                            ]
-                        ),
-                    ]
-                )
-                robot_T = self.variables["x"][0:2, i + 1]
-                self.opti.subject_to(lamb[:, i] >= 0)
-                self.opti.subject_to(mu[:, i] >= 0)
-                self.opti.subject_to(
-                    -ca.mtimes(robot_g.T, mu[:, i]) + ca.mtimes((ca.mtimes(mat_A, robot_T) - vec_b).T, lamb[:, i])
-                    >= omega[i] * param.gamma ** (i + 1) * (cbf_curr - param.margin_dist) + param.margin_dist
-                )
-                self.opti.subject_to(
-                    ca.mtimes(robot_G.T, mu[:, i]) + ca.mtimes(ca.mtimes(robot_R.T, mat_A.T), lamb[:, i]) == 0
-                )
-                temp = ca.mtimes(mat_A.T, lamb[:, i])
-                self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
-                self.opti.subject_to(omega[i] >= 0)
-                self.costs["decay_rate_relaxing"] += param.pomega * (omega[i] - 1) ** 2
-                # warm start
-                self.opti.set_initial(lamb[:, i], lamb_curr)
-                self.opti.set_initial(mu[:, i], mu_curr)
-                self.opti.set_initial(omega[i], 0.1)
+        # duality-cbf constraints - one per stage
+        for k in range(min(param.horizon_dcbf, len(self.x))):
+            lamb = self.opti.variable(mat_A.shape[0], 1)
+            mu = self.opti.variable(robot_G.shape[0], 1)
+            omega = self.opti.variable(1, 1)
+            
+            x_k = self.x[k]
+            robot_R = ca.hcat(
+                [
+                    ca.vcat(
+                        [
+                            ca.cos(x_k[3]),
+                            ca.sin(x_k[3]),
+                        ]
+                    ),
+                    ca.vcat(
+                        [
+                            -ca.sin(x_k[3]),
+                            ca.cos(x_k[3]),
+                        ]
+                    ),
+                ]
+            )
+            robot_T = x_k[0:2]
+            self.opti.subject_to(lamb >= 0)
+            self.opti.subject_to(mu >= 0)
+            self.opti.subject_to(
+                -ca.mtimes(robot_g.T, mu) + ca.mtimes((ca.mtimes(mat_A, robot_T) - vec_b).T, lamb)
+                >= omega * param.gamma ** k * (cbf_curr - param.margin_dist) + param.margin_dist
+            )
+            self.opti.subject_to(
+                ca.mtimes(robot_G.T, mu) + ca.mtimes(ca.mtimes(robot_R.T, mat_A.T), lamb) == 0
+            )
+            temp = ca.mtimes(mat_A.T, lamb)
+            self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
+            self.opti.subject_to(omega >= 0)
+            self.costs["decay_rate_relaxing"] += param.pomega * (omega - 1) ** 2
+            # warm start
+            self.opti.set_initial(lamb, lamb_curr)
+            self.opti.set_initial(mu, mu_curr)
+            self.opti.set_initial(omega, 0.1)
 
-            return 1
+        return 1
 
     def add_obstacle_avoidance_constraint(self, param, system, obstacles_geo):
         self.costs["decay_rate_relaxing"] = 0
@@ -207,25 +241,35 @@ class NmpcDbcfOptimizer:
         print("Nr DCBF constraints added: ", self.constr_cnt)
 
     def add_warm_start(self, param, system):
-        # TODO: wrap params
+        """Set warm start initial values using stage-wise variables."""
         x_ws, u_ws = system._dynamics.nominal_safe_controller(self.state._x, 0.1, -1.0, 1.0)
-        for i in range(param.horizon):
-            self.opti.set_initial(self.variables["x"][:, i + 1], x_ws)
-            self.opti.set_initial(self.variables["u"][:, i], u_ws)
+        for k in range(len(self.x)):
+            self.opti.set_initial(self.x[k], x_ws)
+        for k in range(len(self.u)):
+            self.opti.set_initial(self.u[k], u_ws)
 
     def setup(self, param, system, reference_trajectory, obstacles):
+        """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
         self.set_state(system._state)
         self.opti = ca.Opti()
+        
+        # 1. Initialize all variables
         self.initialize_variables(param)
+        
+        # 2. Add all constraints (in logical order)
         self.add_initial_condition_constraint()
         self.add_input_constraint(param)
         self.add_input_derivative_constraint(param)
         self.add_dynamics_constraint(param)
+        self.add_obstacle_avoidance_constraint(param, system, obstacles)
+        
+        # 3. Add all costs
         self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
         self.add_input_stage_cost(param)
         self.add_prev_input_cost(param)
         self.add_input_smoothness_cost(param)
-        self.add_obstacle_avoidance_constraint(param, system, obstacles)
+        
+        # 4. Set warm start
         self.add_warm_start(param, system)
 
     def solve_nlp(self):

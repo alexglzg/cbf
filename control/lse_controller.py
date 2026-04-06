@@ -101,7 +101,8 @@ class NmpcLseController:
         self._opt_sol = self._optimizer.solve_nlp()
         
         if self._opt_sol:
-            return self._opt_sol.value(self._optimizer.variables["u"][:, 0])
+            # return self._opt_sol.value(self._optimizer.variables["u"][:, 0])
+            return self._opt_sol.value(self._optimizer.u[0])
         else:
             return np.zeros(2)
 

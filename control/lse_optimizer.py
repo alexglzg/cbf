@@ -18,47 +18,63 @@ class NmpcLseOptimizer:
         self.dynamics_opt = dynamics_opt
         self.solver_times = []
         self.iterations = []
+        # Stage-wise storage for Fatrop (block diagonal structure)
+        self.x = []      # x_0, x_1, ..., x_N
+        self.u = []      # u_0, u_1, ..., u_{N-1}
 
     def set_state(self, state):
         self.state = state
 
     def initialize_variables(self, param):
-        # Not different from DCBF as their variables are added in the add_point_to_convex function
-        self.variables["x"] = self.opti.variable(4, param.horizon + 1)
-        self.variables["u"] = self.opti.variable(2, param.horizon)
+        """Initialize variables in true stage-wise format."""
+        self.x = []
+        self.u = []
+        
+        # Initial state (fixed)
+        self.x.append(self.opti.variable(4, 1))
+        
+        # Create stage variables: [x_k, u_k] for k=0..N-1
+        for k in range(param.horizon):
+            u_k = self.opti.variable(2, 1)
+            x_kp1 = self.opti.variable(4, 1)
+            self.u.append(u_k)
+            self.x.append(x_kp1)
 
-    def add_initial_condition_constraint(self):
-        self.opti.subject_to(self.variables["x"][:, 0] == self.state._x)
+    def add_initial_condition_constraint(self, x_0):
+        """Set initial state value."""
+        self.opti.subject_to(x_0 == self.state._x)
+        # self.opti.set_value(self.x[0], self.state._x)
 
-    def add_input_constraint(self, param):
+    def add_input_constraint(self, param, u_k):
+        """Add input box constraints - local to each stage."""
         amin, amax = -0.5, 0.5
         omegamin, omegamax = -0.5, 0.5
-        for i in range(param.horizon):
-            self.opti.subject_to(self.variables["u"][0, i] <= amax)
-            self.opti.subject_to(amin <= self.variables["u"][0, i])
-            self.opti.subject_to(self.variables["u"][1, i] <= omegamax)
-            self.opti.subject_to(omegamin <= self.variables["u"][1, i])
+        self.opti.subject_to(amin <= u_k[0])
+        self.opti.subject_to(u_k[0] <= amax)
+        self.opti.subject_to(omegamin <= u_k[1])
+        self.opti.subject_to(u_k[1] <= omegamax)
 
     def add_input_derivative_constraint(self, param):
+        """Add input rate constraints - coupling adjacent stages."""
         jerk_min, jerk_max = -1.0, 1.0
         omegadot_min, omegadot_max = -0.5, 0.5
-        for i in range(param.horizon - 1):
-            self.opti.subject_to(self.opti.bounded(jerk_min, self.variables["u"][0, i + 1] - self.variables["u"][0, i], jerk_max))
-            self.opti.subject_to(self.opti.bounded(omegadot_min, self.variables["u"][1, i + 1] - self.variables["u"][1, i], omegadot_max))
         
-        # Initial step
-        self.opti.subject_to(self.opti.bounded(jerk_min, self.variables["u"][0, 0] - self.state._u[0], jerk_max))
-        self.opti.subject_to(self.opti.bounded(omegadot_min, self.variables["u"][1, 0] - self.state._u[1], omegadot_max))
-
-    def add_dynamics_constraint(self, param):
-        for i in range(param.horizon):
-            self.opti.subject_to(
-                self.variables["x"][:, i + 1] == self.dynamics_opt(self.variables["x"][:, i], self.variables["u"][:, i])
-            )
-
-    def add_obstacle_avoidance_constraint(self, param, system, safe_polytope, robot_local_verts):
+        # First stage relative to previous input
+        self.opti.subject_to(self.opti.bounded(jerk_min, self.u[0][0] - self.state._u[0], jerk_max))
+        self.opti.subject_to(self.opti.bounded(omegadot_min, self.u[0][1] - self.state._u[1], omegadot_max))
         
-        A_safe, b_safe = safe_polytope # safe_polytope is already in the form of (A, b)
+        # Rate constraints between stages
+        for k in range(len(self.u) - 1):
+            self.opti.subject_to(self.opti.bounded(jerk_min, self.u[k+1][0] - self.u[k][0], jerk_max))
+            self.opti.subject_to(self.opti.bounded(omegadot_min, self.u[k+1][1] - self.u[k][1], omegadot_max))
+
+    def add_dynamics_constraint(self, param, x_k, u_k, xk1):
+        """Add dynamics as stage coupling: x_{k+1} = f(x_k, u_k)."""
+        self.opti.subject_to(xk1 == self.dynamics_opt(x_k, u_k))
+
+    def add_obstacle_avoidance_constraint(self, param, system, safe_polytope, robot_local_verts, x_k, u_k):
+        """Add obstacle avoidance constraints - local to each stage."""
+        A_safe, b_safe = safe_polytope
         if A_safe is None or A_safe.shape[0] == 0: 
             return
 
@@ -67,28 +83,33 @@ class NmpcLseOptimizer:
         n_cons = A_safe.shape[0] * verts_local.shape[1]
         alpha = ca.log(n_cons) / max_approx
 
-        # All constraints, not via LSE
         print("shape of A: ", A_safe.shape)
-        for k in range(param.horizon_dcbf):
-            rob_vertices_xk = self.robot_vertices_ca(self.variables['x'][:, k], verts_local)
-            x_next = self.dynamics_opt(self.variables["x"][:, k], self.variables["u"][:, k])
-            rob_vertices_xk1 = self.robot_vertices_ca(x_next, verts_local)
-            print("shape of rob_vertices_xk: ", rob_vertices_xk.shape)
-            for j in range(rob_vertices_xk.shape[0]):
-                for l in range(A_safe.shape[0]):
-                    dist_xk = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T)
-                    dist_xk1 = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk1[j, :].T)
-                    self.opti.subject_to(dist_xk1 >= param.gamma*dist_xk)
 
-        # # OLD LSE version
-        # for k in range(param.horizon_dcbf):
-        #     h_xk = self._compute_lse_val(self.variables["x"][:, k], A_safe, b_safe, verts_local, max_approx, alpha)
+        rob_vertices_xk = self.robot_vertices_ca(x_k, verts_local)
+        x_k1 = self.dynamics_opt(x_k, u_k)
+        rob_vertices_xkp1 = self.robot_vertices_ca(x_k1, verts_local)
+        
+        # Local obstacle constraints for this stage
+        for j in range(rob_vertices_xk.shape[0]):
+            for l in range(A_safe.shape[0]):
+                dist_xk = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T)
+                dist_xkp1 = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xkp1[j, :].T)
+                self.opti.subject_to(dist_xkp1 >= param.gamma * dist_xk)
+        
+        # # Add obstacle avoidance constraints for each stage
+        # for k in range(min(param.horizon_dcbf, len(self.u))):
+        #     x_k = self.x[k]
+        #     x_kp1 = self.x[k+1]
             
-        #     # Predict x_next
-        #     x_next = self.dynamics_opt(self.variables["x"][:, k], self.variables["u"][:, k])
-        #     h_xk1 = self._compute_lse_val(x_next, A_safe, b_safe, verts_local, max_approx, alpha)
+        #     rob_vertices_xk = self.robot_vertices_ca(x_k, verts_local)
+        #     rob_vertices_xkp1 = self.robot_vertices_ca(x_kp1, verts_local)
             
-        #     self.opti.subject_to(h_xk1 >= param.gamma * h_xk + (1 - param.gamma) * max_approx)
+        #     # Local obstacle constraints for this stage
+        #     for j in range(rob_vertices_xk.shape[0]):
+        #         for l in range(A_safe.shape[0]):
+        #             dist_xk = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T)
+        #             dist_xkp1 = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xkp1[j, :].T)
+        #             self.opti.subject_to(dist_xkp1 >= param.gamma * dist_xk)
 
     def robot_vertices_ca(self, state, verts_local):
         x = state[0]
@@ -112,60 +133,87 @@ class NmpcLseOptimizer:
         verts_global = ca.mtimes(R, verts_local) + ca.vertcat(x, y)
         margins = b - ca.mtimes(A, verts_global)
         
-        # return -ca.logsumexp(ca.vec(-margins), margin)
-        # return ca.mmin(ca.vec(margins))
-        return smooth_min(ca.vec(margins), alpha) # Change to casadi version of logsumexp
+        return smooth_min(ca.vec(margins), alpha)
 
     def add_reference_trajectory_tracking_cost(self, param, reference_trajectory):
+        """Add reference tracking costs - each stage independent."""
         self.costs["reference_trajectory_tracking"] = 0
-        for i in range(param.horizon - 1):
-            x_diff = self.variables["x"][:, i] - reference_trajectory[i, :]
+
+        for k in range(len(self.x) - 1):   # k = 0..N-1
+            x_k = self.x[k + 1]            # decision variables x[1..N]
+            x_diff = x_k - reference_trajectory[k, :]   # reference[0..N-1]
             self.costs["reference_trajectory_tracking"] += ca.mtimes(x_diff.T, ca.mtimes(param.mat_Q, x_diff))
-        x_diff = self.variables["x"][:, -1] - reference_trajectory[-1, :]
+        
+        # Terminal cost
+        x_terminal = self.x[-1]
+        x_diff = x_terminal - reference_trajectory[-1, :]
         self.costs["reference_trajectory_tracking"] += param.terminal_weight * ca.mtimes(
             x_diff.T, ca.mtimes(param.mat_Q, x_diff)
         )
 
     def add_input_stage_cost(self, param):
+        """Add input costs - each stage independent."""
         self.costs["input_stage"] = 0
-        for i in range(param.horizon):
+        for k in range(len(self.u)):
+            u_k = self.u[k]
             self.costs["input_stage"] += ca.mtimes(
-                self.variables["u"][:, i].T, ca.mtimes(param.mat_R, self.variables["u"][:, i])
+                u_k.T, ca.mtimes(param.mat_R, u_k)
             )
 
     def add_prev_input_cost(self, param):
-        self.costs["prev_input"] = ca.mtimes(
-            (self.variables["u"][:, 0] - self.state._u).T,
-            ca.mtimes(param.mat_Rold, (self.variables["u"][:, 0] - self.state._u)),
-        )
+        """Penalize deviation from previous input - only first stage."""
+        if len(self.u) > 0:
+            u_0 = self.u[0]
+            self.costs["prev_input"] = ca.mtimes(
+                (u_0 - self.state._u).T,
+                ca.mtimes(param.mat_Rold, (u_0 - self.state._u)),
+            )
 
     def add_input_smoothness_cost(self, param):
+        """Add input smoothness costs - couple adjacent stages."""
         self.costs["input_smoothness"] = 0
-        for i in range(param.horizon - 1):
+        for k in range(len(self.u) - 1):
+            u_k = self.u[k]
+            u_kp1 = self.u[k+1]
             self.costs["input_smoothness"] += ca.mtimes(
-                (self.variables["u"][:, i + 1] - self.variables["u"][:, i]).T,
-                ca.mtimes(param.mat_dR, (self.variables["u"][:, i + 1] - self.variables["u"][:, i])),
+                (u_kp1 - u_k).T,
+                ca.mtimes(param.mat_dR, (u_kp1 - u_k)),
             )
             
     def add_warm_start(self, param, system):
+        """Set warm start initial values using stage-wise variables."""
         x_ws, u_ws = system._dynamics.nominal_safe_controller(self.state._x, 0.1, -1.0, 1.0)
-        for i in range(param.horizon):
-            self.opti.set_initial(self.variables["x"][:, i + 1], x_ws)
-            self.opti.set_initial(self.variables["u"][:, i], u_ws)
+        for k in range(len(self.x)):
+            self.opti.set_initial(self.x[k], x_ws)
+        for k in range(len(self.u)):
+            self.opti.set_initial(self.u[k], u_ws)
 
     def setup(self, param, system, reference_trajectory, obstacles, robot_local_verts):
+        """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
         self.set_state(system._state)
         self.opti = ca.Opti()
+        
+        # 1. Initialize all variables
         self.initialize_variables(param)
-        self.add_initial_condition_constraint()
-        self.add_input_constraint(param)
-        self.add_input_derivative_constraint(param)
-        self.add_dynamics_constraint(param)
-        self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
-        self.add_input_stage_cost(param)
-        self.add_prev_input_cost(param)
-        self.add_input_smoothness_cost(param)
-        self.add_obstacle_avoidance_constraint(param, system, obstacles, robot_local_verts)
+        
+        # 2. Add all constraints (in logical order)
+        for i in range(len(self.u)):
+            self.add_dynamics_constraint(param, self.x[i], self.u[i], self.x[i + 1])
+            if i == 0:
+                self.add_initial_condition_constraint(self.x[i])
+            else:
+                self.add_input_constraint(param, self.u[i])
+                # self.add_input_derivative_constraint(param)
+                if i < param.horizon_dcbf:
+                    self.add_obstacle_avoidance_constraint(param, system, obstacles, robot_local_verts, self.x[i], self.u[i])
+        
+        # # 3. Add all costs
+        # self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
+        # self.add_input_stage_cost(param)
+        # self.add_prev_input_cost(param)
+        # self.add_input_smoothness_cost(param)
+        
+        # 4. Set warm start
         self.add_warm_start(param, system)
 
     def solve_nlp(self):
@@ -173,55 +221,36 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
+        option = {"fatrop.print_level": 4, "print_time": 1, "expand": True, "fatrop.max_iter": 100, "fatrop.tol": 1e-4, "structure_detection": "auto", "debug": True}
+        self.opti.solver("fatrop", option)
+        # option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
 
         self.nr_constraints = self.opti.ng
         self.nr_variables = self.opti.nx
         print("Nr variables: ", self.nr_variables)
         print("Nr constraints: ", self.nr_constraints)
 
-        ### Plot sparisty pattern
-        opti = self.opti
-        J = ca.jacobian(opti.g, opti.x).sparsity()
-        lag = opti.f + ca.dot(opti.lam_g, opti.g)
-        H = ca.hessian(lag, opti.x)[0].sparsity()
-        import matplotlib.pylab as plt
+        # ### Plot sparsity pattern
+        # opti = self.opti
+        # J = ca.jacobian(opti.g, opti.x).sparsity()
+        # lag = opti.f + ca.dot(opti.lam_g, opti.g)
+        # H = ca.hessian(lag, opti.x)[0].sparsity()
+        # import matplotlib.pylab as plt
 
-        plt.subplots(1, 2, figsize=(10, 4))
-        plt.subplot(1, 2, 1)
-        plt.spy(np.array(J))
-        plt.title("Jacobian Sparsity lse")
+        # plt.subplots(1, 2, figsize=(10, 4))
+        # plt.subplot(1, 2, 1)
+        # plt.spy(np.array(J))
+        # plt.title("Jacobian Sparsity lse")
 
-        plt.subplot(1, 2, 2)
-        plt.spy(np.array(H))
-        plt.title("Hessian Sparsity lse")
-        plt.show(block=True)
+        # plt.subplot(1, 2, 2)
+        # plt.spy(np.array(H))
+        # plt.title("Hessian Sparsity lse")
+        # plt.show(block=True)
 
-        # start_timer = datetime.datetime.now()
-        self.opti.solver("ipopt", option)
+        # self.opti.solver("ipopt", option)
         opt_sol = self.opti.solve()
         sol_time = opt_sol.stats()['t_wall_total']
         iters = opt_sol.stats()['iter_count']
-        # import pdb;pdb.set_trace()
-        # end_timer = datetime.datetime.now()
-        # delta_timer = end_timer - start_timer
-        # self.solver_times.append(delta_timer.total_seconds())
         self.iterations.append(iters)
         print("solver time: ", sol_time)
         return opt_sol
-
-        # try:
-        #     # start_timer = datetime.datetime.now()
-        #     self.opti.solver("ipopt", option)
-        #     opt_sol = self.opti.solve()
-        #     sol_time = opt_sol.stats()['t_wall_total']
-        #     iters = opt_sol.stats()['iter_count']
-        #     import pdb;pdb.set_trace()
-        #     # end_timer = datetime.datetime.now()
-        #     # delta_timer = end_timer - start_timer
-        #     # self.solver_times.append(delta_timer.total_seconds())
-        #     self.iterations.append(iters)
-        #     print("solver time: ", sol_time)
-        #     return opt_sol
-        # except RuntimeError:
-        #     return None
