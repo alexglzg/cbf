@@ -30,15 +30,14 @@ class NmpcLseOptimizer:
         self.x = []
         self.u = []
         
-        # Initial state (fixed)
-        self.x.append(self.opti.variable(4, 1))
-        
         # Create stage variables: [x_k, u_k] for k=0..N-1
         for k in range(param.horizon):
-            u_k = self.opti.variable(2, 1)
             x_kp1 = self.opti.variable(4, 1)
+            u_k = self.opti.variable(2, 1)
             self.u.append(u_k)
             self.x.append(x_kp1)
+        
+        self.x.append(self.opti.variable(4, 1))
 
     def add_initial_condition_constraint(self, x_0):
         """Set initial state value."""
@@ -208,10 +207,10 @@ class NmpcLseOptimizer:
                     self.add_obstacle_avoidance_constraint(param, system, obstacles, robot_local_verts, self.x[i], self.u[i])
         
         # # 3. Add all costs
-        # self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
-        # self.add_input_stage_cost(param)
-        # self.add_prev_input_cost(param)
-        # self.add_input_smoothness_cost(param)
+        self.add_reference_trajectory_tracking_cost(param, reference_trajectory)
+        self.add_input_stage_cost(param)
+        self.add_prev_input_cost(param)
+        self.add_input_smoothness_cost(param)
         
         # 4. Set warm start
         self.add_warm_start(param, system)

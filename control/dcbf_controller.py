@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Rectangle
 from scipy.spatial import ConvexHull, HalfspaceIntersection
+import casadi as ca
 
 from control.dcbf_optimizer import NmpcDbcfOptimizer, NmpcDcbfOptimizerParam
 from control.firi_polytope_old import FIRI
@@ -43,11 +44,15 @@ class NmpcDcbfController:
         # --- 2. CONTROL STEP (DCBF) ---
         self._optimizer.setup(self._param, system, local_trajectory, obstacles)
         self._opt_sol = self._optimizer.solve_nlp()
-        return self._opt_sol.value(self._optimizer.variables["u"][:, 0])
+        # Get first control input from stage-wise structure
+        return self._opt_sol.value(self._optimizer.u[0])
 
     def logging(self, logger):
-        logger._xtrajs.append(self._opt_sol.value(self._optimizer.variables["x"]).T)
-        logger._utrajs.append(self._opt_sol.value(self._optimizer.variables["u"]).T)
+        # Convert stage-wise variables to trajectory format
+        x_values = [self._opt_sol.value(self._optimizer.x[k]).flatten() for k in range(len(self._optimizer.x))]
+        u_values = [self._opt_sol.value(self._optimizer.u[k]).flatten() for k in range(len(self._optimizer.u))]
+        logger._xtrajs.append(np.column_stack(x_values).T)
+        logger._utrajs.append(np.column_stack(u_values).T)
 
     # --- VISUALIZATION HELPERS ---
     def _visualize(self, seed, obstacles, A, b, bbox):
