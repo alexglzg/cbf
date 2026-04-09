@@ -347,7 +347,7 @@ class NmpcDbcfOptimizer:
         self.add_input_smoothness_cost(param)
         
         # # 4. Set warm start
-        # self.add_warm_start(param, system)
+        self.add_warm_start(param, system)
 
     def solve_nlp(self):
         cost = 0
