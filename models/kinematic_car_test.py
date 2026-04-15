@@ -699,12 +699,12 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 1,
-        max_obs     = 15,
+        min_obs     = 8,
+        max_obs     = 8,
         envs_per_count = 1, #10
         robot_shape = "rectangle",
         controllers = ["dcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

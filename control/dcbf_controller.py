@@ -181,10 +181,10 @@ class NmpcDcbfController:
         # --- 2. CONTROL STEP (DCBF) ---
         self._optimizer.setup(self._param, system, local_trajectory, obstacles)
         self._opt_sol = self._optimizer.solve_nlp()
-        if self._opt_sol is None:
+        if self._opt_sol:
+            return self._opt_sol.value(self._optimizer.u[0])
+        else:
             return np.zeros(2)
-        # Get first control input from stage-wise structure
-        return self._opt_sol.value(self._optimizer.u[0])
 
     def collect_metrics(self, system, obstacles):
         """
