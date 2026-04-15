@@ -16,8 +16,13 @@ class NmpcLseOptimizer:
         self.variables = variables
         self.costs = costs
         self.dynamics_opt = dynamics_opt
-        self.solver_times = []
-        self.iterations = []
+        self.solver_times     = []   # total wall time per step [s]
+        self.feval_times      = []   # f+g evaluation time per step [s]
+        self.kkt_times        = []   # total - feval time per step [s]
+        self.iterations       = []   # solver iterations per step
+        self.infeasible_steps = []   # True when solver raised RuntimeError
+        self.n_eq_steps       = []   # equality constraint count per step
+        self.n_ineq_steps     = []   # inequality constraint count per step
         # Stage-wise storage for Fatrop (block diagonal structure)
         self.x = []      # x_0, x_1, ..., x_N
         self.u = []      # u_0, u_1, ..., u_{N-1}
@@ -82,7 +87,7 @@ class NmpcLseOptimizer:
         n_cons = A_safe.shape[0] * verts_local.shape[1]
         alpha = ca.log(n_cons) / max_approx
 
-        print("shape of A: ", A_safe.shape)
+        # print("shape of A: ", A_safe.shape)
 
         rob_vertices_xk = self.robot_vertices_ca(x_k, verts_local)
         x_k1 = self.dynamics_opt(x_k, u_k)
@@ -220,36 +225,58 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 4, "print_time": 1, "expand": True, "fatrop.max_iter": 100, "fatrop.tol": 1e-4, "structure_detection": "auto", "debug": True}
+        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
+                  "fatrop.max_iter": 100, "fatrop.tol": 1e-4,
+                  "structure_detection": "auto", "debug": True}
         self.opti.solver("fatrop", option)
-        # option = {"verbose": False, "ipopt.print_level": 5, "print_time": 1, "expand": True, "ipopt.linear_solver": "mumps"}
 
+        # ── problem-size snapshot ─────────────────────────────────────────
+        self.nr_variables   = self.opti.nx
         self.nr_constraints = self.opti.ng
-        self.nr_variables = self.opti.nx
-        print("Nr variables: ", self.nr_variables)
-        print("Nr constraints: ", self.nr_constraints)
+        # print("Nr variables: ",   self.nr_variables)
+        # print("Nr constraints: ", self.nr_constraints)
 
-        # ### Plot sparsity pattern
-        # opti = self.opti
-        # J = ca.jacobian(opti.g, opti.x).sparsity()
-        # lag = opti.f + ca.dot(opti.lam_g, opti.g)
-        # H = ca.hessian(lag, opti.x)[0].sparsity()
-        # import matplotlib.pylab as plt
+        # ── equality / inequality split (recomputed every step) ───────────
+        try:
+            lbg = np.array(self.opti.lbg)
+            ubg = np.array(self.opti.ubg)
+            n_eq   = int(np.sum(lbg == ubg))
+            n_ineq = self.nr_constraints - n_eq
+        except Exception:
+            n_eq   = None
+            n_ineq = None
 
-        # plt.subplots(1, 2, figsize=(10, 4))
-        # plt.subplot(1, 2, 1)
-        # plt.spy(np.array(J))
-        # plt.title("Jacobian Sparsity lse")
+        try:
+            opt_sol = self.opti.solve()
+            stats   = opt_sol.stats()
 
-        # plt.subplot(1, 2, 2)
-        # plt.spy(np.array(H))
-        # plt.title("Hessian Sparsity lse")
-        # plt.show(block=True)
+            sol_time = stats.get('t_wall_total', float('nan'))
+            t_feval  = (stats.get('t_wall_nlp_f', 0.0)
+                      + stats.get('t_wall_nlp_g', 0.0)
+                      + stats.get('t_wall_nlp_grad_f', 0.0)
+                      + stats.get('t_wall_nlp_jac_g', 0.0)
+                      + stats.get('t_wall_nlp_hess_l', 0.0))
+            # KKT time = total solve time minus pure function evaluation time
+            t_kkt    = sol_time - t_feval
+            iters    = stats.get('iter_count', 0)
 
-        # self.opti.solver("ipopt", option)
-        opt_sol = self.opti.solve()
-        sol_time = opt_sol.stats()['t_wall_total']
-        iters = opt_sol.stats()['iter_count']
-        self.iterations.append(iters)
-        print("solver time: ", sol_time)
-        return opt_sol
+            self.solver_times.append(sol_time)
+            self.feval_times.append(t_feval)
+            self.kkt_times.append(t_kkt)
+            self.iterations.append(iters)
+            self.infeasible_steps.append(False)
+            self.n_eq_steps.append(n_eq)
+            self.n_ineq_steps.append(n_ineq)
+            print(f"solver time: {sol_time:.4f}s  iters: {iters}")
+            return opt_sol
+
+        except RuntimeError as e:
+            print(f"[LSE] Solver failed: {e}")
+            self.solver_times.append(float('nan'))
+            self.feval_times.append(float('nan'))
+            self.kkt_times.append(float('nan'))
+            self.iterations.append(0)
+            self.infeasible_steps.append(True)
+            self.n_eq_steps.append(n_eq)
+            self.n_ineq_steps.append(n_ineq)
+            return None

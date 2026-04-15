@@ -65,7 +65,7 @@ class SingleAgentSimulation:
         self._goal_position = goal_position
 
     def run_navigation(self, navigation_time):
-        self._robot.run_global_planner(self._robot._system, self._obstacles, self._goal_position)
+        self._robot.run_global_planner(self._robot._system, self._obstacles, self._goal_position)        
         while self._robot._system._time < navigation_time:
             self._robot.run_local_planner()
             self._robot.run_controller(self._obstacles)

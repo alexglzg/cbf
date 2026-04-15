@@ -557,12 +557,12 @@ class FIRISolver:
         for hp_test in planes:
             # Check if all vertices satisfy this halfplane
             if hasattr(hp_test, 'normal'):
-                print([hp_test.contains(v) for v in verts])
+                # print([hp_test.contains(v) for v in verts])
                 if any([hp_test.contains(v) for v in verts]):
                     # This plane is NOT redundant
                     non_redundant.append(hp_test)
             else:
-                print([self._halfplane_contains_point(v, hp_test) for v in verts])
+                # print([self._halfplane_contains_point(v, hp_test) for v in verts])
                 if any([self._halfplane_contains_point(v, hp_test) for v in verts]):
                     non_redundant.append(hp_test)
                             

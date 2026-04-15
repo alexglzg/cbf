@@ -10,9 +10,146 @@ from control.firi_polytope_old import FIRI
 # Set to True to enable plotting
 DEBUG_VIS = True
 
+
+# ── clearance helper ──────────────────────────────────────────────────────────
+
+def _closest_point_on_convex_poly(point: np.ndarray, verts: np.ndarray) -> np.ndarray:
+    """
+    Return the point on the boundary (or interior) of a convex polygon that is
+    closest to `point`.  Uses brute-force projection onto every edge.
+    `verts` is (N, 2), CCW ordered.
+    """
+    best_pt   = verts[0].copy()
+    best_dist = np.inf
+    n = len(verts)
+    for i in range(n):
+        a = verts[i]
+        b = verts[(i + 1) % n]
+        ab  = b - a
+        ab2 = ab @ ab
+        if ab2 < 1e-20:
+            proj = a.copy()
+        else:
+            t    = np.clip((point - a) @ ab / ab2, 0.0, 1.0)
+            proj = a + t * ab
+        d = np.linalg.norm(point - proj)
+        if d < best_dist:
+            best_dist = d
+            best_pt   = proj
+    return best_pt
+
+
+def _robot_world_verts(system) -> np.ndarray:
+    """
+    Return all robot vertices in world frame as (M, 2) array,
+    correctly rotated and translated by the current state.
+    State layout for KinematicCar: [x, y, v, theta].
+    """
+    state = system._state._x
+    x, y, theta = float(state[0]), float(state[1]), float(state[3])
+    c, s = np.cos(theta), np.sin(theta)
+    R    = np.array([[c, -s], [s, c]])
+
+    if hasattr(system._geometry, 'equiv_rep'):
+        components = system._geometry.equiv_rep()
+    else:
+        components = [system._geometry]
+
+    all_verts = []
+    for comp in components:
+        if hasattr(comp, 'vertices') and comp.vertices is not None:
+            v_local = np.array(comp.vertices)           # (K, 2)
+        elif hasattr(comp, 'x_min'):
+            v_local = np.array([
+                [comp.x_min, comp.y_min], [comp.x_max, comp.y_min],
+                [comp.x_max, comp.y_max], [comp.x_min, comp.y_max],
+            ])
+        elif hasattr(comp, 'get_convex_rep'):
+            G, g = comp.get_convex_rep()
+            # local vertices: G @ v <= -g  (convention from geometry_utils)
+            # fall back to bounding-box approximation if solve fails
+            try:
+                from scipy.spatial import HalfspaceIntersection, ConvexHull
+                from scipy.optimize import linprog
+                A_lp = np.column_stack((G, np.linalg.norm(G, axis=1)))
+                res  = linprog([0, 0, -1], A_ub=A_lp, b_ub=-g,
+                               bounds=[(None,None)]*3)
+                if res.success:
+                    ctr = res.x[:2]
+                    hs  = HalfspaceIntersection(
+                              np.column_stack((G, g)), ctr)
+                    v_local = hs.intersections[
+                                  ConvexHull(hs.intersections).vertices]
+                else:
+                    continue
+            except Exception:
+                continue
+        else:
+            continue
+
+        v_world = (v_local @ R.T) + np.array([x, y])
+        all_verts.append(v_world)
+
+    return np.vstack(all_verts) if all_verts else np.array([[x, y]])
+
+
+def _clearance_robot_to_obstacle(robot_verts: np.ndarray, obs) -> float:
+    """
+    Minimum distance between the robot polygon (world-frame vertices) and one
+    obstacle.  The obstacle can expose either vertices or a halfplane rep.
+
+    Positive  = separated (safe margin).
+    Zero      = touching.
+    Negative  = overlapping (should never happen with a working CBF).
+    """
+    # ── get obstacle vertices ─────────────────────────────────────────────
+    if hasattr(obs, 'vertices') and obs.vertices is not None:
+        obs_verts = np.array(obs.vertices)
+    elif hasattr(obs, 'x_min'):
+        obs_verts = np.array([
+            [obs.x_min, obs.y_min], [obs.x_max, obs.y_min],
+            [obs.x_max, obs.y_max], [obs.x_min, obs.y_max],
+        ])
+    elif hasattr(obs, 'get_convex_rep'):
+        A, b = obs.get_convex_rep()
+        A, b = np.array(A), np.array(b).flatten()
+        try:
+            from scipy.spatial import HalfspaceIntersection, ConvexHull
+            from scipy.optimize import linprog
+            A_lp = np.column_stack((A, np.linalg.norm(A, axis=1)))
+            res  = linprog([0, 0, -1], A_ub=A_lp, b_ub=b,
+                           bounds=[(None,None)]*3)
+            if not res.success:
+                return float('inf')
+            ctr      = res.x[:2]
+            hs       = HalfspaceIntersection(np.column_stack((A, -b)), ctr)
+            obs_verts = hs.intersections[ConvexHull(hs.intersections).vertices]
+        except Exception:
+            return float('inf')
+    else:
+        return float('inf')
+
+    # ── GJK-lite: min dist over all vertex pairs + edge projections ───────
+    min_dist = np.inf
+    n_r = len(robot_verts)
+    n_o = len(obs_verts)
+
+    # Robot vertex → closest point on each obstacle edge
+    for rv in robot_verts:
+        cp = _closest_point_on_convex_poly(rv, obs_verts)
+        min_dist = min(min_dist, float(np.linalg.norm(rv - cp)))
+
+    # Obstacle vertex → closest point on each robot edge
+    for ov in obs_verts:
+        cp = _closest_point_on_convex_poly(ov, robot_verts)
+        min_dist = min(min_dist, float(np.linalg.norm(ov - cp)))
+
+    return min_dist
+
 class NmpcDcbfController:
-    def __init__(self, dynamics=None, opt_param=None):
+    def __init__(self, dynamics=None, opt_param=None, enable_vis=True):
         self._param = opt_param
+        self._enable_vis = enable_vis and DEBUG_VIS
         # Original DCBF Optimizer
         self._optimizer = NmpcDbcfOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
         
@@ -23,7 +160,7 @@ class NmpcDcbfController:
 
     def generate_control_input(self, system, global_path, local_trajectory, obstacles):
         # --- 1. VISUALIZATION STEP (FIRI) ---
-        if DEBUG_VIS:
+        if self._enable_vis:
             try:
                 # Extract Data for FIRI
                 obs_verts = self._extract_obstacle_vertices(obstacles)
@@ -44,8 +181,35 @@ class NmpcDcbfController:
         # --- 2. CONTROL STEP (DCBF) ---
         self._optimizer.setup(self._param, system, local_trajectory, obstacles)
         self._opt_sol = self._optimizer.solve_nlp()
+        if self._opt_sol is None:
+            return np.zeros(2)
         # Get first control input from stage-wise structure
         return self._opt_sol.value(self._optimizer.u[0])
+
+    def collect_metrics(self, system, obstacles):
+        """
+        Compute and return a dict of per-step metrics for the current state.
+        Call this immediately after generate_control_input() at every time step.
+        The returned dict is later aggregated by the benchmark runner.
+        """
+        opt = self._optimizer
+
+        # ── clearance: closest point on robot to closest point on each obstacle
+        robot_verts = _robot_world_verts(system)
+        clearances  = [_clearance_robot_to_obstacle(robot_verts, obs)
+                       for obs in obstacles]
+
+        return {
+            "comp_time_s":   opt.solver_times[-1]     if opt.solver_times     else None,
+            "feval_time_s":  opt.feval_times[-1]      if opt.feval_times      else None,
+            "kkt_time_s":    opt.kkt_times[-1]        if opt.kkt_times        else None,
+            "iterations":    opt.iterations[-1]       if opt.iterations       else None,
+            "infeasible":    opt.infeasible_steps[-1] if opt.infeasible_steps else None,
+            "n_eq":          opt.n_eq_steps[-1]       if opt.n_eq_steps       else None,
+            "n_ineq":        opt.n_ineq_steps[-1]     if opt.n_ineq_steps     else None,
+            "clearances":    clearances,
+            "min_clearance": float(min(clearances))   if clearances           else None,
+        }
 
     def logging(self, logger):
         # Convert stage-wise variables to trajectory format

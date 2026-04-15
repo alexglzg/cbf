@@ -1,0 +1,28 @@
+Scalability experiments
+
+- Environments with up to 15 obstacles (all taken into account in dcbf)
+-> each nr of obstacles: 10 random environments
+
+- Logging:
+	- Number of constraints
+	- Comp time
+	- Func eval time
+	- KKT time
+	- Iterations
+	- Distance to obstacles / minimum clearance
+	- Infeasibility rate
+	
+Constraint Jacobian sparsity by difference in eq./ineq. constraints? - TODO: check fatrop structure
+Horizon sensitivity analysis -> not necessary since we compare per horizon point (both scale linearly)
+
+Plots to make:
+- DCBF vs number of halfplanes (# obstacles * number of halfplanes per obstacle) for full OCP
+- DCBF vs nr of hps for limited OCP (as presented in paper)
+- PIPCBF vs nr of hps for 
+
+- Benelux plot of nr of constraints and vars
+
+Table:
+- std, min, max comp times, KKT time and iterations
+-> shows favourable structure (convex, vars/constraints)
+

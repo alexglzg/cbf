@@ -282,14 +282,15 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
 def create_env_benchmark(polytopes, scale_factor=1.0):
     if polytopes:
         start = np.array([0.0, 0.0, 0.0])
-        goal = np.array([25.0, 20.0]) * scale_factor
+        # Goal position must be strictly INSIDE the bounds, not on the boundary
+        goal = np.array([11.9, 11.9])
 
-        # Scale the boundaries and the resolution (cell_size)
-        original_bounds = np.array([[0.0, 0.0], [30.0, 25.0]])
-        scaled_bounds = tuple(map(tuple, original_bounds * scale_factor))
-        
-        scaled_cell_size = round(0.1 * scale_factor, 4)
-        grid = (scaled_bounds, scaled_cell_size)
+        # Create grid in the format expected by GridMap: (bounds, cell_size)
+        # bounds should be ((x_min, y_min), (x_max, y_max))
+        # Note: positions must be strictly within bounds (not on boundary)
+        bounds = ((0.0, 0.0), (12.0, 12.0))
+        cell_size = 0.05
+        grid = (bounds, cell_size)
 
         obstacles = []
         for poly in polytopes:
@@ -297,7 +298,7 @@ def create_env_benchmark(polytopes, scale_factor=1.0):
             vec_b = []
             for hp in poly:
                 mat_A.append(hp[0:2])
-                vec_b.append(hp[2] * scale_factor)
+                vec_b.append(hp[2])
             obstacles.append(PolytopeRegion(mat_A=np.array(mat_A), vec_b=np.array(vec_b)))
         return start, goal, grid, obstacles
 
@@ -377,21 +378,302 @@ def create_env(env_type):
         return start, goal, grid, obstacles
 
 
-if __name__ == "__main__":
-    # kinematic_car_triangle_simulation_test()
-    # kinematic_car_pentagon_simulation_test()
-    maze_types = ["oblique_maze"]
-    # maze_types = ["maze", "oblique_maze"]
-    robot_shapes = ["rectangle"]
-    # robot_shapes = ["triangle", "rectangle", "pentagon", "lshape"]
-    dir = '/home/ttamr/Documents/embeddedcbf/benchmark/envs/'
-    file = 'env0.json'
-    env_data = read_json(dir, file)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# §  BENCHMARK RUNNER  —  scalability experiments across saved environments
+# ══════════════════════════════════════════════════════════════════════════════
+
+import json as _json
+import statistics as _st
+
+# ── folder conventions (mirror claude_polytope_env.py) ────────────────────────
+#   environments : ./envs/n{N}/env{I}.json
+#   results      : ./results/n{N}/env{I}_{controller}.json
+ENVS_ROOT    = "/home/ttamr/Documents/embeddedcbf/benchmark/envs"
+RESULTS_ROOT = "./results"
+
+
+def _results_path(n_obs: int, env_idx: int, controller: str) -> str:
+    folder = os.path.join(RESULTS_ROOT, f"n{n_obs}")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, f"env{env_idx}_{controller}.json")
+
+
+def _collect_problem_size(optimizer) -> dict:
+    """Read problem-size fields from an optimizer after its first solve."""
+    return {
+        "n_variables":    getattr(optimizer, 'nr_variables',   None),
+        "n_constraints":  getattr(optimizer, 'nr_constraints', None),
+        "n_eq":           getattr(optimizer, '_n_eq',          None),
+        "n_ineq":         getattr(optimizer, '_n_ineq',        None),
+    }
+
+
+def run_benchmark_env(
+    env_json_path: str,
+    n_obs: int,
+    env_idx: int,
+    robot_shape: str    = "rectangle",
+    controller_type: str = "dcbf",
+    enable_vis: bool    = True,
+):
+    """
+    Run one environment for one controller and write a results JSON.
+
+    Parameters
+    ----------
+    env_json_path   : path to the environment JSON produced by claude_polytope_env.py
+    n_obs           : number of obstacles (used only for the output path)
+    env_idx         : environment index within its n-obstacle folder
+    robot_shape     : "rectangle" | "pentagon" | "triangle" | "lshape"
+    controller_type : "dcbf" | "pipcbf"
+    enable_vis      : set False for headless / fast scalability runs
+    """
+    out_path = _results_path(n_obs, env_idx, controller_type)
+    if os.path.exists(out_path):
+        print(f"  [skip] results already exist: {out_path}")
+        return
+    
+    # ── load environment ──────────────────────────────────────────────────
+    with open(env_json_path) as f:
+        env_data = _json.load(f)
     polytopes = env_data['halfplanes']
 
-    for maze_type in maze_types:
-        for robot_shape in robot_shapes:
-            kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "dcbf", polytopes)
-            # kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, "pipcbf", polytopes)
+    start_pos, goal_pos, grid, obstacles = create_env_benchmark(
+        polytopes, scale_factor=0.1)
+
+    # ── build robot geometry ──────────────────────────────────────────────
+    geometry_regions = KinematicCarMultipleGeometry()
+    if robot_shape == "rectangle":
+        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.15, 0.06, 0.1))
+    elif robot_shape == "pentagon":
+        geometry_regions.add_geometry(
+            KinematicCarTriangleGeometry(
+                np.array([[0.15,0.00],[0.03,0.05],[-0.01,0.02],
+                          [-0.01,-0.02],[0.03,-0.05]])
+            )
+        )
+    elif robot_shape == "triangle":
+        geometry_regions.add_geometry(
+            KinematicCarTriangleGeometry(
+                0.75 * np.array([[0.14,0.00],[-0.03,0.05],[-0.03,-0.05]])
+            )
+        )
+    elif robot_shape == "lshape":
+        geometry_regions.add_geometry(
+            KinematicCarTriangleGeometry(
+                0.4 * np.array([[0,0.1],[0.02,0.08],[-0.2,-0.1],[-0.22,-0.08]])
+            )
+        )
+        geometry_regions.add_geometry(
+            KinematicCarTriangleGeometry(
+                0.4 * np.array([[0,0.1],[-0.02,0.08],[0.2,-0.1],[0.22,-0.08]])
+            )
+        )
+
+    robot = Robot(
+        KinematicCarSystem(
+            state=KinematicCarStates(
+                x=np.block([start_pos[:2], np.array([0.0, start_pos[2]])])),
+            geometry=geometry_regions,
+            dynamics=KinematicCarDynamics(),
+        )
+    )
+
+    robot.set_global_planner(
+        AstarLoSPathGenerator(grid, quad=False, margin=0.05))
+    robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
+
+    opt_param = NmpcDcbfOptimizerParam()
+    if robot_shape in ("rectangle", "lshape"):
+        opt_param.terminal_weight = 10.0
+    elif robot_shape == "triangle":
+        opt_param.terminal_weight = 2.0
+    elif robot_shape == "pentagon":
+        opt_param.terminal_weight = 5.0
+
+    if controller_type == "dcbf":
+        controller = NmpcDcbfController(
+            dynamics=KinematicCarDynamics(),
+            opt_param=opt_param,
+            enable_vis=enable_vis,
+        )
+    elif controller_type == "pipcbf":
+        controller = NmpcLseController(
+            dynamics=KinematicCarDynamics(),
+            opt_param=opt_param,
+            enable_vis=enable_vis,
+        )
+    else:
+        raise ValueError(f"Unknown controller_type: {controller_type}")
+
+    robot.set_controller(controller)
+
+    # ── run simulation, collecting per-step metrics ───────────────────────
+    sim = SingleAgentSimulation(robot, obstacles, goal_pos)
+
+    # Monkey-patch the simulation step to intercept each control call.
+    # We store per-step metric dicts here so we don't need to touch sim.py.
+    step_metrics: list = []
+    _orig_gen = controller.generate_control_input
+
+    def _patched_gen(system, global_path, local_traj, obs):
+        u = _orig_gen(system, global_path, local_traj, obs)
+        m = controller.collect_metrics(system, obs)
+        step_metrics.append(m)
+        return u
+
+    controller.generate_control_input = _patched_gen
+
+    sim.run_navigation(30.0)
+
+    # ── aggregate results ─────────────────────────────────────────────────
+    opt = controller._optimizer
+
+    comp_times   = [m["comp_time_s"]   for m in step_metrics if m["comp_time_s"]   is not None]
+    feval_times  = [m["feval_time_s"]  for m in step_metrics if m["feval_time_s"]  is not None]
+    kkt_times    = [m["kkt_time_s"]    for m in step_metrics if m["kkt_time_s"]    is not None]
+    iters        = [m["iterations"]    for m in step_metrics if m["iterations"]    is not None]
+    min_clears   = [m["min_clearance"] for m in step_metrics if m["min_clearance"] is not None]
+    n_eq_list    = [m["n_eq"]          for m in step_metrics if m["n_eq"]          is not None]
+    n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
+    n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
+    n_steps      = len(step_metrics)
+
+    def _safe_stats(vals):
+        if not vals:
+            return {"median": None, "std": None, "min": None, "max": None}
+        return {
+            "median": _st.median(vals),
+            "std":    _st.stdev(vals) if len(vals) > 1 else 0.0,
+            "min":    min(vals),
+            "max":    max(vals),
+        }
+
+    results = {
+        # ── identification ────────────────────────────────────────────────
+        "env_json":       env_json_path,
+        "n_obstacles":    n_obs,
+        "env_idx":        env_idx,
+        "controller":     controller_type,
+        "robot_shape":    robot_shape,
+        # ── problem size (constant per env) ───────────────────────────────
+        "problem_size": {
+            "n_variables":   getattr(opt, 'nr_variables',   None),
+            "n_constraints": getattr(opt, 'nr_constraints', None),
+        },
+        # ── eq/ineq counts per step (may vary if active obstacle set changes)
+        "n_eq_steps":    n_eq_list,
+        "n_ineq_steps":  n_ineq_list,
+        # ── per-step timing ───────────────────────────────────────────────
+        "comp_time_s":    _safe_stats(comp_times),
+        "feval_time_s":   _safe_stats(feval_times),
+        "kkt_time_s":     _safe_stats(kkt_times),
+        # ── solver behaviour ──────────────────────────────────────────────
+        "iterations":     _safe_stats(iters),
+        "n_steps":        n_steps,
+        "n_infeasible":   n_infeasible,
+        "infeasibility_rate": n_infeasible / n_steps if n_steps > 0 else None,
+        # ── safety (clearance to obstacles) ──────────────────────────────
+        "min_clearance":  _safe_stats(min_clears),
+        # ── full per-step log (for detailed analysis) ────────────────────
+        "steps": step_metrics,
+    }
+
+    with open(out_path, "w") as f:
+        _json.dump(results, f, indent=2)
+
+    print(f"\n  Results saved → {out_path}")
+    print(f"  Steps: {n_steps}  |  Infeasible: {n_infeasible}"
+          f"  |  Median solve: "
+          f"{results['comp_time_s']['median']:.4f}s"
+          if results['comp_time_s']['median'] is not None else "")
+    return results
+
+
+def run_scalability_benchmark(
+    min_obs: int        = 1,
+    max_obs: int        = 15,
+    envs_per_count: int = 10,
+    robot_shape: str    = "rectangle",
+    controllers: list   = None,
+    enable_vis: bool    = False,   # False = fast headless mode
+):
+    """
+    Run the full scalability benchmark across all saved environments.
+
+    Parameters
+    ----------
+    min_obs / max_obs   : obstacle-count range to sweep
+    envs_per_count      : how many environments per obstacle count to run
+    robot_shape         : robot shape to use
+    controllers         : list of controller strings, default ["dcbf","pipcbf"]
+    enable_vis          : set True to show live matplotlib windows
+    """
+    if controllers is None:
+        controllers = ["dcbf", "pipcbf"]
+
+    print("\n══════════════════════════════════════════════════════════════")
+    print(f"  Scalability Benchmark  —  obstacles {min_obs}–{max_obs}")
+    print(f"  Controllers : {controllers}")
+    print(f"  Robot shape : {robot_shape}")
+    print(f"  Visualisation: {'ON' if enable_vis else 'OFF (headless)'}")
+    print("══════════════════════════════════════════════════════════════\n")
+
+    for n_obs in range(min_obs, max_obs + 1):
+        env_folder = os.path.join(ENVS_ROOT, f"n{n_obs}")
+        if not os.path.isdir(env_folder):
+            print(f"  [n={n_obs}] No environment folder found, skipping.")
+            continue
+
+        # Collect available env JSON files, sorted by index
+        import re as _re
+        pat = _re.compile(r'^env(\d+)\.json$')
+        env_files = sorted(
+            [(int(m.group(1)), f)
+             for f in os.listdir(env_folder)
+             if (m := pat.match(f))],
+            key=lambda t: t[0]
+        )[:envs_per_count]
+
+        if not env_files:
+            print(f"  [n={n_obs}] No env files found, skipping.")
+            continue
+
+        print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
+        for env_idx, fname in env_files:
+            env_path = os.path.join(env_folder, fname)
+            for ctrl in controllers:
+                print(f"  Running env{env_idx}  controller={ctrl} …")
+                try:
+                    run_benchmark_env(
+                        env_json_path=env_path,
+                        n_obs=n_obs,
+                        env_idx=env_idx,
+                        robot_shape=robot_shape,
+                        controller_type=ctrl,
+                        enable_vis=enable_vis,
+                    )
+                except Exception as e:
+                    print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+
+
+if __name__ == "__main__":
+    # ── single-env quick test (matches original usage) ────────────────────
+    # dir  = '/home/ttamr/Documents/embeddedcbf/benchmark/envs/'
+    # file = 'env0.json'
+    # env_data = read_json(dir, file)
+    # polytopes = env_data['halfplanes']
+    # kinematic_car_all_shapes_simulation_test("oblique_maze", "rectangle", "dcbf", polytopes)
+
+    # ── scalability benchmark ─────────────────────────────────────────────
+    run_scalability_benchmark(
+        min_obs     = 1,
+        max_obs     = 15,
+        envs_per_count = 10,
+        robot_shape = "rectangle",
+        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
+        enable_vis  = False,   # <── set True to re-enable live plots
+    )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH
