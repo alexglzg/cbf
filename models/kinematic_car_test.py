@@ -389,7 +389,8 @@ import statistics as _st
 # ── folder conventions (mirror claude_polytope_env.py) ────────────────────────
 #   environments : ./envs/n{N}/env{I}.json
 #   results      : ./results/n{N}/env{I}_{controller}.json
-ENVS_ROOT    = "/home/ttamr/Documents/embeddedcbf/benchmark/envs"
+# ENVS_ROOT    = "/home/ttamr/Documents/embeddedcbf/benchmark/envs"
+ENVS_ROOT = "/home/u0110021/git_repos/embeddedcbf/benchmark/envs"
 RESULTS_ROOT = "./results"
 
 
@@ -651,6 +652,7 @@ def run_scalability_benchmark(
 
     for n_obs in range(min_obs, max_obs + 1):
         env_folder = os.path.join(ENVS_ROOT, f"n{n_obs}")
+        print(env_folder)
         if not os.path.isdir(env_folder):
             print(f"  [n={n_obs}] No environment folder found, skipping.")
             continue
