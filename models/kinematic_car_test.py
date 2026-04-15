@@ -445,7 +445,7 @@ def run_benchmark_env(
     # ── build robot geometry ──────────────────────────────────────────────
     geometry_regions = KinematicCarMultipleGeometry()
     if robot_shape == "rectangle":
-        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.15, 0.06, 0.1))
+        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.9, 0.45, 0.1))
     elif robot_shape == "pentagon":
         geometry_regions.add_geometry(
             KinematicCarTriangleGeometry(
@@ -535,6 +535,7 @@ def run_benchmark_env(
     kkt_times    = [m["kkt_time_s"]    for m in step_metrics if m["kkt_time_s"]    is not None]
     iters        = [m["iterations"]    for m in step_metrics if m["iterations"]    is not None]
     min_clears   = [m["min_clearance"] for m in step_metrics if m["min_clearance"] is not None]
+    n_vars_list  = [m["n_variables"]   for m in step_metrics if m["n_variables"]   is not None]
     n_eq_list    = [m["n_eq"]          for m in step_metrics if m["n_eq"]          is not None]
     n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
     n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
@@ -550,6 +551,31 @@ def run_benchmark_env(
             "max":    max(vals),
         }
 
+    # ── convert obstacles to serializable format ──────────────────────────
+    obstacles_data = []
+    for obs in obstacles:
+        if hasattr(obs, 'vertices') and obs.vertices is not None:
+            obstacles_data.append({"vertices": obs.vertices.tolist()})
+        elif hasattr(obs, 'x_min'):
+            # RectangleRegion
+            verts = [
+                [obs.x_min, obs.y_min],
+                [obs.x_max, obs.y_min],
+                [obs.x_max, obs.y_max],
+                [obs.x_min, obs.y_max],
+            ]
+            obstacles_data.append({"vertices": verts})
+        elif hasattr(obs, 'get_convex_rep'):
+            # PolytopeRegion - try to get vertices
+            try:
+                A, b = obs.get_convex_rep()
+                # For now, store as halfplanes
+                obstacles_data.append({
+                    "halfplanes": [[A[i].tolist(), float(b[i])] for i in range(len(A))]
+                })
+            except:
+                obstacles_data.append({"type": "polytope"})
+
     results = {
         # ── identification ────────────────────────────────────────────────
         "env_json":       env_json_path,
@@ -563,8 +589,11 @@ def run_benchmark_env(
             "n_constraints": getattr(opt, 'nr_constraints', None),
         },
         # ── eq/ineq counts per step (may vary if active obstacle set changes)
+        "n_variables_steps": n_vars_list,
         "n_eq_steps":    n_eq_list,
         "n_ineq_steps":  n_ineq_list,
+        # ── obstacle data ─────────────────────────────────────────────────
+        "obstacles":     obstacles_data,
         # ── per-step timing ───────────────────────────────────────────────
         "comp_time_s":    _safe_stats(comp_times),
         "feval_time_s":   _safe_stats(feval_times),
@@ -670,9 +699,9 @@ if __name__ == "__main__":
     run_scalability_benchmark(
         min_obs     = 1,
         max_obs     = 15,
-        envs_per_count = 10,
+        envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
+        controllers = ["dcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 

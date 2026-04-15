@@ -233,6 +233,7 @@ class NmpcLseController:
             "kkt_time_s":    opt.kkt_times[-1]        if opt.kkt_times        else None,
             "iterations":    opt.iterations[-1]       if opt.iterations       else None,
             "infeasible":    opt.infeasible_steps[-1] if opt.infeasible_steps else None,
+            "n_variables":   opt.n_variables_steps[-1] if hasattr(opt, 'n_variables_steps') and opt.n_variables_steps else None,
             "n_eq":          opt.n_eq_steps[-1]       if opt.n_eq_steps       else None,
             "n_ineq":        opt.n_ineq_steps[-1]     if opt.n_ineq_steps     else None,
             "clearances":    clearances,

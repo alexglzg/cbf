@@ -21,6 +21,7 @@ class NmpcLseOptimizer:
         self.kkt_times        = []   # total - feval time per step [s]
         self.iterations       = []   # solver iterations per step
         self.infeasible_steps = []   # True when solver raised RuntimeError
+        self.n_variables_steps = []  # variable count per step
         self.n_eq_steps       = []   # equality constraint count per step
         self.n_ineq_steps     = []   # inequality constraint count per step
         # Stage-wise storage for Fatrop (block diagonal structure)
@@ -238,13 +239,16 @@ class NmpcLseOptimizer:
 
         # ── equality / inequality split (recomputed every step) ───────────
         try:
-            lbg = np.array(self.opti.lbg)
-            ubg = np.array(self.opti.ubg)
-            n_eq   = int(np.sum(lbg == ubg))
+            lbg = np.array(self.opti.lbg, dtype=float)
+            ubg = np.array(self.opti.ubg, dtype=float)
+            # Find equality constraints where lower bound equals upper bound
+            eq_mask = np.isclose(lbg, ubg, atol=1e-10)
+            n_eq   = int(np.sum(eq_mask))
             n_ineq = self.nr_constraints - n_eq
-        except Exception:
-            n_eq   = None
-            n_ineq = None
+        except Exception as e:
+            # Fallback: assume all constraints are inequality
+            n_eq   = 0
+            n_ineq = self.nr_constraints if self.nr_constraints is not None else None
 
         try:
             opt_sol = self.opti.solve()
@@ -265,6 +269,7 @@ class NmpcLseOptimizer:
             self.kkt_times.append(t_kkt)
             self.iterations.append(iters)
             self.infeasible_steps.append(False)
+            self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
             print(f"solver time: {sol_time:.4f}s  iters: {iters}")
@@ -277,6 +282,7 @@ class NmpcLseOptimizer:
             self.kkt_times.append(float('nan'))
             self.iterations.append(0)
             self.infeasible_steps.append(True)
+            self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
             return None
