@@ -8,8 +8,8 @@ from models.geometry_utils import *
 
 class NmpcDcbfOptimizerParam:
     def __init__(self):
-        self.horizon = 11
-        self.horizon_dcbf = 6
+        self.horizon = 20
+        self.horizon_dcbf = 15
         self.mat_Q = np.diag([100.0, 100.0, 1.0, 1.0])
         self.mat_R = np.diag([0.0, 0.0])
         self.mat_Rold = np.diag([1.0, 1.0]) * 0.0
@@ -362,8 +362,8 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
-                  "fatrop.max_iter": 100, "fatrop.tol": 1e-4,
+        option = {"fatrop.print_level": 5, "print_time": 1, "expand": True,
+                  "fatrop.max_iter": 250, "fatrop.tol": 1e-4,
                   "structure_detection": "auto", "debug": True}
         self.opti.solver("fatrop", option)
 

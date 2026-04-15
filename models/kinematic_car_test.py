@@ -686,7 +686,9 @@ def run_scalability_benchmark(
                         enable_vis=enable_vis,
                     )
                 except Exception as e:
+                    import traceback
                     print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+                    print(traceback.print_exc())
 
 
 if __name__ == "__main__":
