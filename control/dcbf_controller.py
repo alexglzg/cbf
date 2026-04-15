@@ -213,11 +213,12 @@ class NmpcDcbfController:
         }
 
     def logging(self, logger):
-        # Convert stage-wise variables to trajectory format
-        x_values = [self._opt_sol.value(self._optimizer.x[k]).flatten() for k in range(len(self._optimizer.x))]
-        u_values = [self._opt_sol.value(self._optimizer.u[k]).flatten() for k in range(len(self._optimizer.u))]
-        logger._xtrajs.append(np.column_stack(x_values).T)
-        logger._utrajs.append(np.column_stack(u_values).T)
+        if self._opt_sol:
+            # Convert stage-wise variables to trajectory format
+            x_values = [self._opt_sol.value(self._optimizer.x[k]).flatten() for k in range(len(self._optimizer.x))]
+            u_values = [self._opt_sol.value(self._optimizer.u[k]).flatten() for k in range(len(self._optimizer.u))]
+            logger._xtrajs.append(np.column_stack(x_values).T)
+            logger._utrajs.append(np.column_stack(u_values).T)
 
     # --- VISUALIZATION HELPERS ---
     def _visualize(self, seed, obstacles, A, b, bbox):

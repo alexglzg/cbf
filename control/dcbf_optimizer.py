@@ -16,7 +16,7 @@ class NmpcDcbfOptimizerParam:
         self.mat_dR = np.diag([1.0, 1.0]) * 0.0
         self.gamma = 0.8
         self.pomega = 10.0
-        self.margin_dist = 0.00
+        self.margin_dist = 0.1
         self.terminal_weight = 10.0
 
 
@@ -88,8 +88,10 @@ class NmpcDbcfOptimizer:
 
     def add_input_constraint(self, param, u_k):
         """Add input box constraints - local to each stage."""
-        amin, amax = -0.5, 0.5
-        omegamin, omegamax = -0.5, 0.5
+        # amin, amax = -0.5, 0.5
+        # omegamin, omegamax = -0.5, 0.5
+        amin, amax = -2.0, 2.0
+        omegamin, omegamax = -2.0, 2.0
         self.opti.subject_to(amin <= u_k[0])
         self.opti.subject_to(u_k[0] <= amax)
         self.opti.subject_to(omegamin <= u_k[1])
