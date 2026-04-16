@@ -12,7 +12,6 @@ from control.lse_optimizer import NmpcLseOptimizer
 
 DEBUG_VIS = True
 
-
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
 def _closest_point_on_convex_poly(point: np.ndarray, verts: np.ndarray) -> np.ndarray:
