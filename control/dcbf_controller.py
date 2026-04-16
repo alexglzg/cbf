@@ -181,6 +181,7 @@ class NmpcDcbfController:
         # --- 2. CONTROL STEP (DCBF) ---
         self._optimizer.setup(self._param, system, local_trajectory, obstacles)
         self._opt_sol = self._optimizer.solve_nlp()
+        print(f"Current position: {system._state._x[:2]}")
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])
         else:
