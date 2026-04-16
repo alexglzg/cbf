@@ -28,6 +28,9 @@ class NmpcLseOptimizer:
         self.x = []      # x_0, x_1, ..., x_N
         self.u = []      # u_0, u_1, ..., u_{N-1}
 
+        self._prev_x = None
+        self._prev_u = None
+
     def set_state(self, state):
         self.state = state
 
@@ -187,11 +190,30 @@ class NmpcLseOptimizer:
             
     def add_warm_start(self, param, system):
         """Set warm start initial values using stage-wise variables."""
-        x_ws, u_ws = system._dynamics.nominal_safe_controller(self.state._x, 0.1, -1.0, 1.0)
-        for k in range(len(self.x)):
-            self.opti.set_initial(self.x[k], x_ws)
-        for k in range(len(self.u)):
-            self.opti.set_initial(self.u[k], u_ws)
+        if self._prev_x is None or self._prev_u is None:
+            # First step: fall back to nominal controller
+            x_ws, u_ws = system._dynamics.nominal_safe_controller(
+                self.state._x, 0.1, -1.0, 1.0
+            )
+            for k in range(len(self.x)):
+                self.opti.set_initial(self.x[k], x_ws)
+            for k in range(len(self.u)):
+                self.opti.set_initial(self.u[k], u_ws)
+            return
+
+        N = param.horizon
+
+        # Shift states: x[k] <- prev_x[k+1]  for k = 0..N-1
+        # Fill terminal: repeat last state
+        for k in range(N):
+            self.opti.set_initial(self.x[k], self._prev_x[k + 1])
+        self.opti.set_initial(self.x[N], self._prev_x[N])  # hold last
+
+        # Shift inputs: u[k] <- prev_u[k+1]  for k = 0..N-2
+        # Fill last input: repeat previous last input
+        for k in range(N - 1):
+            self.opti.set_initial(self.u[k], self._prev_u[k + 1])
+        self.opti.set_initial(self.u[N - 1], self._prev_u[N - 1])  # hold last
 
     def setup(self, param, system, reference_trajectory, obstacles, robot_local_verts):
         """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
@@ -264,6 +286,9 @@ class NmpcLseOptimizer:
             t_kkt    = sol_time - t_feval
             iters    = stats.get('iter_count', 0)
 
+            self._prev_x = [opt_sol.value(xk) for xk in self.x]
+            self._prev_u = [opt_sol.value(uk) for uk in self.u]
+
             self.solver_times.append(sol_time)
             self.feval_times.append(t_feval)
             self.kkt_times.append(t_kkt)
@@ -277,6 +302,10 @@ class NmpcLseOptimizer:
 
         except RuntimeError as e:
             print(f"[LSE] Solver failed: {e}")
+
+            self._prev_x = None
+            self._prev_u = None
+
             self.solver_times.append(float('nan'))
             self.feval_times.append(float('nan'))
             self.kkt_times.append(float('nan'))

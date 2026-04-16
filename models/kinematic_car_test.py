@@ -526,7 +526,9 @@ def run_benchmark_env(
 
     controller.generate_control_input = _patched_gen
 
-    sim.run_navigation(30.0)
+    sim.run_navigation(20.0)
+
+    controller._create_gif()
 
     # ── aggregate results ─────────────────────────────────────────────────
     opt = controller._optimizer
@@ -706,7 +708,7 @@ if __name__ == "__main__":
         envs_per_count = 1, #10
         robot_shape = "rectangle",
         controllers = ["dcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

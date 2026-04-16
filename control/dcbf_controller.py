@@ -7,6 +7,10 @@ import casadi as ca
 from control.dcbf_optimizer import NmpcDbcfOptimizer, NmpcDcbfOptimizerParam
 from control.firi_polytope_old import FIRI
 
+import os
+import glob
+from PIL import Image
+
 # Set to True to enable plotting
 DEBUG_VIS = True
 
@@ -226,6 +230,9 @@ class NmpcDcbfController:
         if self._fig is None:
             plt.ion()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
+            self._plot_counter = 0
+            self._last_save_counter = 0
+            os.makedirs("plots", exist_ok=True)
         
         self._ax.clear()
         
@@ -253,7 +260,52 @@ class NmpcDcbfController:
         self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
         self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
         self._ax.set_title("DCBF Controller + FIRI Visualization")
-        plt.pause(0.001)
+        # plt.pause(0.001)
+
+        # Save every 10 frames instead of pausing every 0.001s
+        SAVE_EVERY_N_FRAMES = 10
+        if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
+            filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
+            self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
+            self._last_save_counter = self._plot_counter
+
+        self._plot_counter += 1
+
+        # Non-blocking draw without the 0.001s sleep
+        # self._fig.canvas.draw()
+        # self._fig.canvas.flush_events()
+
+    def _create_gif(self, output_path="plots/animation.gif", fps=10, max_frames=300):
+        """
+        Create a GIF from all saved PNG frames in the plots/ folder.
+        
+        Args:
+            output_path:  Where to save the GIF.
+            fps:          Playback speed of the GIF.
+            max_frames:   Cap frames to avoid huge files; evenly subsamples if exceeded.
+        """
+        frame_paths = sorted(glob.glob("plots/frame_*.png"))
+        if not frame_paths:
+            print("[GIF] No frames found in plots/. Run the simulation first.")
+            return
+
+        # Subsample if too many frames
+        if len(frame_paths) > max_frames:
+            indices = np.linspace(0, len(frame_paths) - 1, max_frames, dtype=int)
+            frame_paths = [frame_paths[i] for i in indices]
+
+        print(f"[GIF] Creating GIF from {len(frame_paths)} frames → {output_path}")
+
+        frames = [Image.open(p).convert("RGBA") for p in frame_paths]
+        frames[0].save(
+            output_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=int(1000 / fps),   # ms per frame
+            loop=0,
+            optimize=False,
+        )
+        print(f"[GIF] Saved: {output_path}  ({os.path.getsize(output_path) / 1024:.1f} KB)")
 
     def _extract_obstacle_vertices(self, obstacles):
         obs_list = []

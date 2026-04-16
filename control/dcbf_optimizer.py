@@ -9,12 +9,12 @@ from models.geometry_utils import *
 class NmpcDcbfOptimizerParam:
     def __init__(self):
         self.horizon = 20
-        self.horizon_dcbf = 15
+        self.horizon_dcbf = 18
         self.mat_Q = np.diag([100.0, 100.0, 1.0, 1.0])
         self.mat_R = np.diag([0.0, 0.0])
         self.mat_Rold = np.diag([1.0, 1.0]) * 0.0
         self.mat_dR = np.diag([1.0, 1.0]) * 0.0
-        self.gamma = 0.8
+        self.gamma = 0.5
         self.pomega = 10.0
         self.margin_dist = 0.1
         self.terminal_weight = 10.0
@@ -384,10 +384,13 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
-                  "fatrop.max_iter": 250, "fatrop.tol": 1e-4,
-                  "structure_detection": "auto", "debug": True}
-        self.opti.solver("fatrop", option)
+        # option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
+        #           "fatrop.max_iter": 250, "fatrop.tol": 1e-4,
+        #           "structure_detection": "auto", "debug": True}
+        # self.opti.solver("fatrop", option)
+        option = {"ipopt.print_level": 0, "print_time": 1, "expand": True,
+                  "ipopt.max_iter": 250, "ipopt.tol": 1e-4}
+        self.opti.solver("ipopt", option)
 
         # ── problem-size snapshot ─────────────────────────────────────────
         self.nr_variables   = self.opti.nx

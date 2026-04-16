@@ -157,7 +157,7 @@ class KinematicCarSystem(System):
     def update(self, unew):
         xnew = self._dynamics.forward_dynamics(self.get_state(), unew, 0.1)
         self._state._x = xnew
-        self._time += 0.1
+        self._time += 0.1 # timestep: 100ms
 
     def logging(self, logger):
         logger._xs.append(self._state._x)
