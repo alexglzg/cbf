@@ -163,6 +163,7 @@ class NmpcDcbfController:
         self._ax = None
 
     def generate_control_input(self, system, global_path, local_trajectory, obstacles):
+
         # --- 1. VISUALIZATION STEP (FIRI) ---
         if self._enable_vis:
             try:
@@ -178,7 +179,7 @@ class NmpcDcbfController:
                 A_safe, b_safe = self._firi.compute(obs_verts, seed_poly, bbox)
                 
                 # Draw
-                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox)
+                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox, global_path)
             except Exception as e:
                 print(f"[DCBF Viz Error] {e}")
 
@@ -226,7 +227,7 @@ class NmpcDcbfController:
             logger._utrajs.append(np.column_stack(u_values).T)
 
     # --- VISUALIZATION HELPERS ---
-    def _visualize(self, seed, obstacles, A, b, bbox):
+    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory):
         if self._fig is None:
             plt.ion()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
@@ -235,6 +236,17 @@ class NmpcDcbfController:
             os.makedirs("plots", exist_ok=True)
         
         self._ax.clear()
+
+        
+        # Reference trajectory (blue line)
+        if reference_trajectory is not None and len(reference_trajectory) > 1:
+            self._ax.plot(
+                reference_trajectory[:, 0],
+                reference_trajectory[:, 1],
+                color='blue',
+                linewidth=2,
+                label='Reference trajectory'
+            )
         
         # BBox
         self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 

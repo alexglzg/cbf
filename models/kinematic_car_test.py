@@ -629,7 +629,7 @@ def run_scalability_benchmark(
     envs_per_count: int = 10,
     robot_shape: str    = "rectangle",
     controllers: list   = None,
-    enable_vis: bool    = False,   # False = fast headless mode
+    enable_vis: bool    = True,   # False = fast headless mode
 ):
     """
     Run the full scalability benchmark across all saved environments.
