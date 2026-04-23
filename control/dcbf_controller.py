@@ -179,7 +179,7 @@ class NmpcDcbfController:
                 A_safe, b_safe = self._firi.compute(obs_verts, seed_poly, bbox)
                 
                 # Draw
-                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox, global_path)
+                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox, global_path, local_trajectory)
             except Exception as e:
                 print(f"[DCBF Viz Error] {e}")
 
@@ -227,16 +227,20 @@ class NmpcDcbfController:
             logger._utrajs.append(np.column_stack(u_values).T)
 
     # --- VISUALIZATION HELPERS ---
-    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory):
+    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory):
         if self._fig is None:
             plt.ion()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
             self._plot_counter = 0
             self._last_save_counter = 0
             os.makedirs("plots", exist_ok=True)
+
+            # FIXED environment limits (set once)
+            self._ax.set_xlim(bbox[0], bbox[1])
+            self._ax.set_ylim(bbox[2], bbox[3])
+            self._ax.set_aspect('equal', adjustable='box')
         
         self._ax.clear()
-
         
         # Reference trajectory (blue line)
         if reference_trajectory is not None and len(reference_trajectory) > 1:
@@ -246,6 +250,27 @@ class NmpcDcbfController:
                 color='blue',
                 linewidth=2,
                 label='Reference trajectory'
+            )
+            
+            # Discrete waypoints (stars)
+            self._ax.plot(
+                reference_trajectory[:, 0],
+                reference_trajectory[:, 1],
+                linestyle='None',
+                marker='*',
+                color='blue',
+                markersize=8,
+                label='Reference waypoints'
+            )
+        
+        # Local MPC trajectory (green)
+        if mpc_trajectory is not None and len(mpc_trajectory) > 1:
+            self._ax.plot(
+                mpc_trajectory[:, 0],
+                mpc_trajectory[:, 1],
+                color='green',
+                linewidth=2,
+                label='MPC trajectory'
             )
         
         # BBox
@@ -269,23 +294,23 @@ class NmpcDcbfController:
                 self._ax.add_patch(Polygon(verts, color='green', alpha=0.3, label='FIRI Region'))
             except: pass
             
-        self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
-        self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
+        # self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
+        # self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
         self._ax.set_title("DCBF Controller + FIRI Visualization")
         # plt.pause(0.001)
 
-        # Save every 10 frames instead of pausing every 0.001s
-        SAVE_EVERY_N_FRAMES = 10
-        if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
-            filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
-            self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
-            self._last_save_counter = self._plot_counter
+        # # Save every 10 frames instead of pausing every 0.001s
+        # SAVE_EVERY_N_FRAMES = 10
+        # if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
+        #     filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
+        #     self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
+        #     self._last_save_counter = self._plot_counter
 
-        self._plot_counter += 1
+        # self._plot_counter += 1
 
         # Non-blocking draw without the 0.001s sleep
-        # self._fig.canvas.draw()
-        # self._fig.canvas.flush_events()
+        self._fig.canvas.draw()
+        self._fig.canvas.flush_events()
 
     def _create_gif(self, output_path="plots/animation.gif", fps=10, max_frames=300):
         """

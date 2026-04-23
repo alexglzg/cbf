@@ -8,8 +8,8 @@ from models.geometry_utils import *
 
 class NmpcDcbfOptimizerParam:
     def __init__(self):
-        self.horizon = 20
-        self.horizon_dcbf = 18
+        self.horizon = 40
+        self.horizon_dcbf = 15
         self.mat_Q = np.diag([100.0, 100.0, 1.0, 1.0])
         self.mat_R = np.diag([0.0, 0.0])
         self.mat_Rold = np.diag([1.0, 1.0]) * 0.0

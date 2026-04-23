@@ -269,7 +269,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
     elif controller_type == "pipcbf":
         robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
     sim = SingleAgentSimulation(robot, obstacles, goal_pos)
-    sim.run_navigation(30.0)
+    sim.run_navigation(100.0)
     print("median: ", st.median(robot._controller._optimizer.solver_times))
     print("std: ", st.stdev(robot._controller._optimizer.solver_times))
     print("min: ", min(robot._controller._optimizer.solver_times))
