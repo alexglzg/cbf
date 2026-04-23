@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("TkAgg")
 from matplotlib.patches import Polygon, Rectangle
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 import casadi as ca
@@ -164,6 +166,19 @@ class NmpcDcbfController:
 
     def generate_control_input(self, system, global_path, local_trajectory, obstacles):
 
+        # Local trajectory is not MPC solution, = Constant speed trajectory generator
+        # Global path is A* solution, not passed on to MPC?
+
+        # --- 2. CONTROL STEP (DCBF) ---
+        print("Local trajectory: ", local_trajectory.shape)
+        self._optimizer.setup(self._param, system, local_trajectory, obstacles)
+        self._opt_sol = self._optimizer.solve_nlp()
+        print(f"Current position: {system._state._x[:2]}")
+
+        mpc_trajectory = []
+        for i in range(self._param.horizon):
+            mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
+
         # --- 1. VISUALIZATION STEP (FIRI) ---
         if self._enable_vis:
             try:
@@ -179,14 +194,10 @@ class NmpcDcbfController:
                 A_safe, b_safe = self._firi.compute(obs_verts, seed_poly, bbox)
                 
                 # Draw
-                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox, global_path, local_trajectory)
+                self._visualize(seed_poly, obs_verts, A_safe, b_safe, bbox, global_path, np.asarray(mpc_trajectory))
             except Exception as e:
                 print(f"[DCBF Viz Error] {e}")
 
-        # --- 2. CONTROL STEP (DCBF) ---
-        self._optimizer.setup(self._param, system, local_trajectory, obstacles)
-        self._opt_sol = self._optimizer.solve_nlp()
-        print(f"Current position: {system._state._x[:2]}")
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])
         else:
@@ -229,19 +240,26 @@ class NmpcDcbfController:
     # --- VISUALIZATION HELPERS ---
     def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory):
         if self._fig is None:
-            plt.ion()
+            plt.ioff()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
+            plt.show(block=False)
             self._plot_counter = 0
             self._last_save_counter = 0
             os.makedirs("plots", exist_ok=True)
 
-            # FIXED environment limits (set once)
-            self._ax.set_xlim(bbox[0], bbox[1])
-            self._ax.set_ylim(bbox[2], bbox[3])
-            self._ax.set_aspect('equal', adjustable='box')
+            
+            # ✅ STORE GLOBAL ENVIRONMENT LIMITS ONCE
+            self._env_xlim = (0, 12)
+            self._env_ylim = (0, 12)
         
         self._ax.clear()
-        
+
+        # ✅ FIXED GLOBAL ENVIRONMENT LIMITS
+        self._ax.set_xlim(*self._env_xlim)
+        self._ax.set_ylim(*self._env_ylim)
+        self._ax.set_aspect('equal', adjustable='box')
+
+
         # Reference trajectory (blue line)
         if reference_trajectory is not None and len(reference_trajectory) > 1:
             self._ax.plot(
@@ -284,22 +302,20 @@ class NmpcDcbfController:
         # Robot Seed
         self._ax.add_patch(Polygon(seed, color='blue', alpha=0.5))
         
-        # Computed Polytope (Green)
-        if A.shape[0] > 0:
-            try:
-                center = np.mean(seed, axis=0)
-                halfspaces = np.column_stack((A, -b))
-                hs = HalfspaceIntersection(halfspaces, center)
-                verts = hs.intersections[ConvexHull(hs.intersections).vertices]
-                self._ax.add_patch(Polygon(verts, color='green', alpha=0.3, label='FIRI Region'))
-            except: pass
+        # # Computed Polytope (Green)
+        # if A.shape[0] > 0:
+        #     try:
+        #         center = np.mean(seed, axis=0)
+        #         halfspaces = np.column_stack((A, -b))
+        #         hs = HalfspaceIntersection(halfspaces, center)
+        #         verts = hs.intersections[ConvexHull(hs.intersections).vertices]
+        #         self._ax.add_patch(Polygon(verts, color='green', alpha=0.3, label='FIRI Region'))
+        #     except: pass
             
-        # self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
-        # self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
-        self._ax.set_title("DCBF Controller + FIRI Visualization")
+        self._ax.set_title("DCBF Controller")
         # plt.pause(0.001)
 
-        # # Save every 10 frames instead of pausing every 0.001s
+        # Save every 10 frames instead of pausing every 0.001s
         # SAVE_EVERY_N_FRAMES = 10
         # if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
         #     filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
@@ -309,7 +325,7 @@ class NmpcDcbfController:
         # self._plot_counter += 1
 
         # Non-blocking draw without the 0.001s sleep
-        self._fig.canvas.draw()
+        self._fig.canvas.draw_idle()
         self._fig.canvas.flush_events()
 
     def _create_gif(self, output_path="plots/animation.gif", fps=10, max_frames=300):

@@ -250,7 +250,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
             dynamics=KinematicCarDynamics(),
         )
     )
-    global_path_margin = 0.05
+    global_path_margin = 0.45 #Should be dimensions of robot to give local planner more margin - 0.05
     robot.set_global_planner(AstarLoSPathGenerator(grid, quad=False, margin=global_path_margin))
     robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
     opt_param = NmpcDcbfOptimizerParam()
