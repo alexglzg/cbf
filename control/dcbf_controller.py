@@ -153,11 +153,12 @@ def _clearance_robot_to_obstacle(robot_verts: np.ndarray, obs) -> float:
     return min_dist
 
 class NmpcDcbfController:
-    def __init__(self, dynamics=None, opt_param=None, enable_vis=True):
+    def __init__(self, dynamics=None, opt_param=None, enable_vis=True, reconfigure=True):
         self._param = opt_param
         self._enable_vis = enable_vis and DEBUG_VIS
         # Original DCBF Optimizer
         self._optimizer = NmpcDbcfOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
+        self.reconfigure = reconfigure
         
         # FIRI for Visualization ONLY
         self._firi = FIRI()
@@ -170,12 +171,12 @@ class NmpcDcbfController:
         # Global path is A* solution, not passed on to MPC?
 
         # --- 2. CONTROL STEP (DCBF) ---
-        self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = False)
+        self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = False, reconfigure=self.reconfigure)
         self._opt_sol = self._optimizer.solve_nlp()
 
         if self._opt_sol is None:
             # Resolve with cold start instead of warm start
-            self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = True)
+            self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = True, reconfigure=self.reconfigure)
             self._opt_sol = self._optimizer.solve_nlp()
 
         mpc_trajectory = []

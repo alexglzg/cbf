@@ -526,6 +526,7 @@ def run_benchmark_env(
                 dynamics=KinematicCarDynamics(),
                 opt_param=opt_param,
                 enable_vis=enable_vis,
+                reconfigure=False
             )
         elif controller_type == "pipcbf":
             controller = NmpcLseController(

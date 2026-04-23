@@ -192,7 +192,7 @@ class NmpcDbcfOptimizer:
             self.opti.set_initial(lamb, lamb_curr)
             self.opti.set_initial(omega, 0.1)
 
-    def add_convex_to_convex_constraint(self, param, robot_geo, obs_geo, safe_dist, x_k, lambda_k, mu_k, omega_k, k):
+    def add_convex_to_convex_constraint(self, param, robot_geo, obs_geo, safe_dist, x_k, lambda_k, mu_k, omega_k, k, reconfigure):
         """Add DCBF constraint for convex-to-convex - local to each stage."""
         mat_A, vec_b = obs_geo.get_convex_rep()
         robot_G, robot_g = robot_geo.get_convex_rep()
@@ -205,8 +205,9 @@ class NmpcDbcfOptimizer:
         )
 
         # filter obstacle if it's still far away
-        if cbf_curr > safe_dist:
-            return 0
+        if reconfigure:
+            if cbf_curr > safe_dist:
+                return 0
         
         robot_R = ca.hcat(
                 [
@@ -288,7 +289,7 @@ class NmpcDbcfOptimizer:
 
         return 1
 
-    def add_obstacle_avoidance_constraint(self, param, system, obstacles_geo, x_k, lambd, mu, omega, k):
+    def add_obstacle_avoidance_constraint(self, param, system, obstacles_geo, x_k, lambd, mu, omega, k, reconfigure):
         self.costs["decay_rate_relaxing"] = 0
         # TODO: wrap params
         # TODO: move safe dist inside attribute `system`
@@ -301,7 +302,7 @@ class NmpcDbcfOptimizer:
             # TODO: need to add case for `add_point_convex_constraint()`
             k_idx = k * len(obstacles_geo) + idx
             if isinstance(robot_comp, ConvexRegion2D):
-                cnt = self.add_convex_to_convex_constraint(param, robot_comp, obs_geo, safe_dist, x_k, lambd[k_idx], mu[k_idx], omega[k_idx], k)
+                cnt = self.add_convex_to_convex_constraint(param, robot_comp, obs_geo, safe_dist, x_k, lambd[k_idx], mu[k_idx], omega[k_idx], k, reconfigure)
                 self.constr_cnt += cnt
             else:
                 raise NotImplementedError()
@@ -336,7 +337,7 @@ class NmpcDbcfOptimizer:
             self.opti.set_initial(self.u[k], self._prev_u[k + 1])
         self.opti.set_initial(self.u[N - 1], self._prev_u[N - 1])  # hold last
 
-    def setup(self, param, system, reference_trajectory, obstacles, cold_start = False):
+    def setup(self, param, system, reference_trajectory, obstacles, cold_start = False, reconfigure = True):
         """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
 
         # import pdb;pdb.set_trace()
@@ -356,7 +357,7 @@ class NmpcDbcfOptimizer:
                 self.add_input_constraint(param, self.u[i])
                 # self.add_input_derivative_constraint(param)
                 if i < param.horizon_dcbf:
-                    self.add_obstacle_avoidance_constraint(param, system, obstacles, self.x[i], self.lamb, self.mu, self.omega, i)
+                    self.add_obstacle_avoidance_constraint(param, system, obstacles, self.x[i], self.lamb, self.mu, self.omega, i, reconfigure)
 
         # self.set_state(system._state)
         # self.opti = ca.Opti()
