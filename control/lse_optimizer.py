@@ -188,9 +188,10 @@ class NmpcLseOptimizer:
                 ca.mtimes(param.mat_dR, (u_kp1 - u_k)),
             )
             
-    def add_warm_start(self, param, system):
+    def add_warm_start(self, param, system, cold_start):
         """Set warm start initial values using stage-wise variables."""
-        if self._prev_x is None or self._prev_u is None:
+        if self._prev_x is None or self._prev_u is None or cold_start:
+            print("COLD START MPC!")
             # First step: fall back to nominal controller
             x_ws, u_ws = system._dynamics.nominal_safe_controller(
                 self.state._x, 0.1, -1.0, 1.0
@@ -215,7 +216,7 @@ class NmpcLseOptimizer:
             self.opti.set_initial(self.u[k], self._prev_u[k + 1])
         self.opti.set_initial(self.u[N - 1], self._prev_u[N - 1])  # hold last
 
-    def setup(self, param, system, reference_trajectory, obstacles, robot_local_verts):
+    def setup(self, param, system, reference_trajectory, obstacles, robot_local_verts, cold_start = False):
         """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
         self.set_state(system._state)
         self.opti = ca.Opti()
@@ -241,7 +242,7 @@ class NmpcLseOptimizer:
         self.add_input_smoothness_cost(param)
         
         # 4. Set warm start
-        self.add_warm_start(param, system)
+        self.add_warm_start(param, system, cold_start)
 
     def solve_nlp(self):
         cost = 0

@@ -442,19 +442,18 @@ def run_benchmark_env(
     polytopes = env_data['halfplanes']
 
     # GOAL_POSES = [
-    #         (12.0, 12.0),
-    #         (6.0, 12.0),
-    #         (0.0, 12.0),
+    #         (11.9, 11.9),
+    #         (6.0, 11.9),
+    #         (0.0, 11.9),
     #         (0.0, 6.0),
     #         (0.0, 0.0),
     #         (6.0, 0.0),
-    #         (12.0, 0.0),
-    #         (12.0, 6.0),
+    #         (11.9, 0.0),
+    #         (11.9, 6.0),
     #     ]
 
     GOAL_POSES = [
-            (1.0, 1.0),
-            (1.0, 0.0),
+            (11.9, 11.9)
     ]
 
     # Build grid and obstacles (does not change with start and goal position variation)
@@ -495,9 +494,10 @@ def run_benchmark_env(
     for i, goal_xy in enumerate(GOAL_POSES):
         print("="*60)
         print("Goal pos: ", goal_xy)
-        start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
+        # start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
 
-        start_pos = np.array([start_xy[0], start_xy[1], 0.0])
+        # start_pos = np.array([start_xy[0], start_xy[1], 0.0])
+        start_pos = np.array([0.0, 0.0, 0.0])
         goal_pos = np.array([goal_xy[0], goal_xy[1]])
 
         robot = Robot(
@@ -745,8 +745,8 @@ if __name__ == "__main__":
         max_obs     = 8,
         envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["dcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

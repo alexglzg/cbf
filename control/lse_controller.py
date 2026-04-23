@@ -199,15 +199,25 @@ class NmpcLseController:
         A_safe = np.vstack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in firi_result.planes])
         b_safe = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in firi_result.planes])
 
+        self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts)
+        self._opt_sol = self._optimizer.solve_nlp()
+
+        if self._opt_sol is None:
+            # Resolve with cold start instead of warm start
+            self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts)
+            self._opt_sol = self._optimizer.solve_nlp()
+
+        mpc_trajectory = []
+        for i in range(self._param.horizon):
+            mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
+
         # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
         if self._enable_vis:
             # Convert bbox halfplanes to tuple format for visualization
             bbox_tuple = (bbox_x_min, bbox_x_max, bbox_y_min, bbox_y_max)
-            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple)
+            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(mpc_trajectory))
 
-        self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts)
-        self._opt_sol = self._optimizer.solve_nlp()
         
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])
@@ -247,12 +257,56 @@ class NmpcLseController:
             logger._xtrajs.append(np.column_stack(x_values).T)
             logger._utrajs.append(np.column_stack(u_values).T)
 
-    def _visualize(self, seed, obstacles, A, b, bbox):
+    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory):
         if self._fig is None:
-            plt.ion()
+            plt.ioff()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
+            plt.show(block=False)
+            self._plot_counter = 0
+            self._last_save_counter = 0
+            os.makedirs("plots", exist_ok=True)
+
+            # ✅ STORE GLOBAL ENVIRONMENT LIMITS ONCE
+            self._env_xlim = (0, 12)
+            self._env_ylim = (0, 12)
         
         self._ax.clear()
+
+        # ✅ FIXED GLOBAL ENVIRONMENT LIMITS
+        self._ax.set_xlim(*self._env_xlim)
+        self._ax.set_ylim(*self._env_ylim)
+        self._ax.set_aspect('equal', adjustable='box')
+
+        # Reference trajectory (blue line)
+        if reference_trajectory is not None and len(reference_trajectory) > 1:
+            self._ax.plot(
+                reference_trajectory[:, 0],
+                reference_trajectory[:, 1],
+                color='blue',
+                linewidth=2,
+                label='Reference trajectory'
+            )
+            
+            # Discrete waypoints (stars)
+            self._ax.plot(
+                reference_trajectory[:, 0],
+                reference_trajectory[:, 1],
+                linestyle='None',
+                marker='*',
+                color='blue',
+                markersize=8,
+                label='Reference waypoints'
+            )
+        
+        # Local MPC trajectory (green)
+        if mpc_trajectory is not None and len(mpc_trajectory) > 1:
+            self._ax.plot(
+                mpc_trajectory[:, 0],
+                mpc_trajectory[:, 1],
+                color='green',
+                linewidth=2,
+                label='MPC trajectory'
+            )
         
         # Draw BBox
         self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 
