@@ -55,8 +55,10 @@ class NmpcLseOptimizer:
 
     def add_input_constraint(self, param, u_k):
         """Add input box constraints - local to each stage."""
-        amin, amax = -0.5, 0.5
-        omegamin, omegamax = -0.5, 0.5
+        # amin, amax = -0.5, 0.5
+        # omegamin, omegamax = -0.5, 0.5
+        amin, amax = -2.0, 2.0
+        omegamin, omegamax = -2.0, 2.0
         self.opti.subject_to(amin <= u_k[0])
         self.opti.subject_to(u_k[0] <= amax)
         self.opti.subject_to(omegamin <= u_k[1])
@@ -102,7 +104,7 @@ class NmpcLseOptimizer:
             for l in range(A_safe.shape[0]):
                 dist_xk = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xk[j, :].T)
                 dist_xkp1 = b_safe[l] - ca.dot(ca.MX(A_safe[l]), rob_vertices_xkp1[j, :].T)
-                self.opti.subject_to(dist_xkp1 >= param.gamma * dist_xk)
+                self.opti.subject_to(dist_xkp1 >= param.gamma * dist_xk + (1 - param.gamma) * param.margin_dist)
         
         # # Add obstacle avoidance constraints for each stage
         # for k in range(min(param.horizon_dcbf, len(self.u))):
