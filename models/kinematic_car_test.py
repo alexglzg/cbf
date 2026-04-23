@@ -446,7 +446,7 @@ def run_benchmark_env(
     # ── build robot geometry ──────────────────────────────────────────────
     geometry_regions = KinematicCarMultipleGeometry()
     if robot_shape == "rectangle":
-        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.9, 0.45, 0.1))
+        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.6, 0.3, 0.1))
     elif robot_shape == "pentagon":
         geometry_regions.add_geometry(
             KinematicCarTriangleGeometry(

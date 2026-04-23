@@ -186,7 +186,7 @@ class NmpcDcbfController:
                 obs_verts = self._extract_obstacle_vertices(obstacles)
                 seed_poly = self._get_robot_seed(system)
                 
-                # Local BBox (Match LSE logic: +/- 2.0m)
+                # # Local BBox (Match LSE logic: +/- 2.0m)
                 rx, ry = system._state._x[0], system._state._x[1]
                 bbox = (rx-2.0, rx+2.0, ry-2.0, ry+2.0)
                 
@@ -291,9 +291,9 @@ class NmpcDcbfController:
                 label='MPC trajectory'
             )
         
-        # BBox
-        self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 
-                         linewidth=1, edgecolor='r', facecolor='none', linestyle='--', label='BBox'))
+        # # BBox
+        # self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 
+        #                  linewidth=1, edgecolor='r', facecolor='none', linestyle='--', label='BBox'))
 
         # Obstacles
         for obs in obstacles:

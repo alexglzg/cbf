@@ -10,11 +10,11 @@ class ConstantSpeedTrajectoryGenerator:
         # TODO: number of waypoints shall equal to length of global path
         self._num_waypoint = None
         # local path
-        self._reference_speed = 0.2
-        self._num_horizon = 40 # SHould be equal to the number of control steps in MPC controller
+        self._reference_speed = 1.0 # .2
+        self._num_horizon = 20 # SHould be equal to the number of control steps in MPC controller
         self._local_path_timestep = 0.1
         self._local_trajectory = None
-        self._proj_dist_buffer = 0.45 #0.05
+        self._proj_dist_buffer = 0.05 #0.05
 
     def generate_trajectory(self, system, global_path):
         # TODO: move initialization of _num_waypoint and _global_path to constructor
