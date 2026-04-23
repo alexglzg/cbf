@@ -308,9 +308,10 @@ class NmpcDbcfOptimizer:
 
         # print("Nr DCBF constraints added: ", self.constr_cnt)
 
-    def add_warm_start(self, param, system):
+    def add_warm_start(self, param, system, cold_start):
         """Set warm start initial values using stage-wise variables."""
-        if self._prev_x is None or self._prev_u is None:
+        if self._prev_x is None or self._prev_u is None or cold_start:
+            print("COLD START MPC!")
             # First step: fall back to nominal controller
             x_ws, u_ws = system._dynamics.nominal_safe_controller(
                 self.state._x, 0.1, -1.0, 1.0
@@ -335,7 +336,7 @@ class NmpcDbcfOptimizer:
             self.opti.set_initial(self.u[k], self._prev_u[k + 1])
         self.opti.set_initial(self.u[N - 1], self._prev_u[N - 1])  # hold last
 
-    def setup(self, param, system, reference_trajectory, obstacles):
+    def setup(self, param, system, reference_trajectory, obstacles, cold_start = False):
         """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
 
         # import pdb;pdb.set_trace()
@@ -377,7 +378,7 @@ class NmpcDbcfOptimizer:
         self.add_input_smoothness_cost(param)
         
         # # 4. Set warm start
-        self.add_warm_start(param, system)
+        self.add_warm_start(param, system, cold_start)
 
     def solve_nlp(self):
         cost = 0
@@ -457,4 +458,7 @@ class NmpcDbcfOptimizer:
             self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
+
+            # Resolve with new initial guess
+
             return None

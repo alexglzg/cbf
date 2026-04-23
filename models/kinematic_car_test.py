@@ -269,7 +269,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
     elif controller_type == "pipcbf":
         robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
     sim = SingleAgentSimulation(robot, obstacles, goal_pos)
-    sim.run_navigation(100.0)
+    sim.run_navigation(100.0, goal_pos, zone=0.1)
     print("median: ", st.median(robot._controller._optimizer.solver_times))
     print("std: ", st.stdev(robot._controller._optimizer.solver_times))
     print("min: ", min(robot._controller._optimizer.solver_times))
@@ -283,7 +283,8 @@ def create_env_benchmark(polytopes, scale_factor=1.0):
     if polytopes:
         start = np.array([0.0, 0.0, 0.0])
         # Goal position must be strictly INSIDE the bounds, not on the boundary
-        goal = np.array([11.9, 11.9])
+        # goal = np.array([11.9, 11.9])
+        goal = np.array([1.0, 1.0])
 
         # Create grid in the format expected by GridMap: (bounds, cell_size)
         # bounds should be ((x_min, y_min), (x_max, y_max))
@@ -440,6 +441,23 @@ def run_benchmark_env(
         env_data = _json.load(f)
     polytopes = env_data['halfplanes']
 
+    # GOAL_POSES = [
+    #         (12.0, 12.0),
+    #         (6.0, 12.0),
+    #         (0.0, 12.0),
+    #         (0.0, 6.0),
+    #         (0.0, 0.0),
+    #         (6.0, 0.0),
+    #         (12.0, 0.0),
+    #         (12.0, 6.0),
+    #     ]
+
+    GOAL_POSES = [
+            (1.0, 1.0),
+            (1.0, 0.0),
+    ]
+
+    # Build grid and obstacles (does not change with start and goal position variation)
     start_pos, goal_pos, grid, obstacles = create_env_benchmark(
         polytopes, scale_factor=0.1)
 
@@ -472,154 +490,173 @@ def run_benchmark_env(
             )
         )
 
-    robot = Robot(
-        KinematicCarSystem(
-            state=KinematicCarStates(
-                x=np.block([start_pos[:2], np.array([0.0, start_pos[2]])])),
-            geometry=geometry_regions,
-            dynamics=KinematicCarDynamics(),
+    # Add loop over start and goal poses
+    results = []
+    for i, goal_xy in enumerate(GOAL_POSES):
+        print("="*60)
+        print("Goal pos: ", goal_xy)
+        start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
+
+        start_pos = np.array([start_xy[0], start_xy[1], 0.0])
+        goal_pos = np.array([goal_xy[0], goal_xy[1]])
+
+        robot = Robot(
+            KinematicCarSystem(
+                state=KinematicCarStates(
+                    x=np.block([start_pos[:2], np.array([0.0, start_pos[2]])])),
+                geometry=geometry_regions,
+                dynamics=KinematicCarDynamics(),
+            )
         )
-    )
 
-    robot.set_global_planner(
-        AstarLoSPathGenerator(grid, quad=False, margin=0.05))
-    robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
+        robot.set_global_planner(
+            AstarLoSPathGenerator(grid, quad=False, margin=0.05))
+        robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
 
-    opt_param = NmpcDcbfOptimizerParam()
-    if robot_shape in ("rectangle", "lshape"):
-        opt_param.terminal_weight = 10.0
-    elif robot_shape == "triangle":
-        opt_param.terminal_weight = 2.0
-    elif robot_shape == "pentagon":
-        opt_param.terminal_weight = 5.0
+        opt_param = NmpcDcbfOptimizerParam()
+        if robot_shape in ("rectangle", "lshape"):
+            opt_param.terminal_weight = 10.0
+        elif robot_shape == "triangle":
+            opt_param.terminal_weight = 2.0
+        elif robot_shape == "pentagon":
+            opt_param.terminal_weight = 5.0
 
-    if controller_type == "dcbf":
-        controller = NmpcDcbfController(
-            dynamics=KinematicCarDynamics(),
-            opt_param=opt_param,
-            enable_vis=enable_vis,
-        )
-    elif controller_type == "pipcbf":
-        controller = NmpcLseController(
-            dynamics=KinematicCarDynamics(),
-            opt_param=opt_param,
-            enable_vis=enable_vis,
-        )
-    else:
-        raise ValueError(f"Unknown controller_type: {controller_type}")
+        if controller_type == "dcbf":
+            controller = NmpcDcbfController(
+                dynamics=KinematicCarDynamics(),
+                opt_param=opt_param,
+                enable_vis=enable_vis,
+            )
+        elif controller_type == "pipcbf":
+            controller = NmpcLseController(
+                dynamics=KinematicCarDynamics(),
+                opt_param=opt_param,
+                enable_vis=enable_vis,
+            )
+        else:
+            raise ValueError(f"Unknown controller_type: {controller_type}")
 
-    robot.set_controller(controller)
+        robot.set_controller(controller)
 
-    # ── run simulation, collecting per-step metrics ───────────────────────
-    sim = SingleAgentSimulation(robot, obstacles, goal_pos)
+        # ── run simulation, collecting per-step metrics ───────────────────────
+        sim = SingleAgentSimulation(robot, obstacles, goal_pos)
 
-    # Monkey-patch the simulation step to intercept each control call.
-    # We store per-step metric dicts here so we don't need to touch sim.py.
-    step_metrics: list = []
-    _orig_gen = controller.generate_control_input
+        # Monkey-patch the simulation step to intercept each control call.
+        # We store per-step metric dicts here so we don't need to touch sim.py.
+        step_metrics: list = []
+        _orig_gen = controller.generate_control_input
 
-    def _patched_gen(system, global_path, local_traj, obs):
-        u = _orig_gen(system, global_path, local_traj, obs)
-        m = controller.collect_metrics(system, obs)
-        step_metrics.append(m)
-        return u
+        def _patched_gen(system, global_path, local_traj, obs):
+            u = _orig_gen(system, global_path, local_traj, obs)
+            m = controller.collect_metrics(system, obs)
+            step_metrics.append(m)
+            return u
 
-    controller.generate_control_input = _patched_gen
+        controller.generate_control_input = _patched_gen
 
-    sim.run_navigation(20.0)
+        sim.run_navigation(100.0, zone=0.2)
 
-    controller._create_gif()
+        # controller._create_gif()
 
-    # ── aggregate results ─────────────────────────────────────────────────
-    opt = controller._optimizer
+        # ── aggregate results ─────────────────────────────────────────────────
+        opt = controller._optimizer
 
-    comp_times   = [m["comp_time_s"]   for m in step_metrics if m["comp_time_s"]   is not None]
-    feval_times  = [m["feval_time_s"]  for m in step_metrics if m["feval_time_s"]  is not None]
-    kkt_times    = [m["kkt_time_s"]    for m in step_metrics if m["kkt_time_s"]    is not None]
-    iters        = [m["iterations"]    for m in step_metrics if m["iterations"]    is not None]
-    min_clears   = [m["min_clearance"] for m in step_metrics if m["min_clearance"] is not None]
-    n_vars_list  = [m["n_variables"]   for m in step_metrics if m["n_variables"]   is not None]
-    n_eq_list    = [m["n_eq"]          for m in step_metrics if m["n_eq"]          is not None]
-    n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
-    n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
-    n_steps      = len(step_metrics)
+        comp_times   = [m["comp_time_s"]   for m in step_metrics if m["comp_time_s"]   is not None]
+        feval_times  = [m["feval_time_s"]  for m in step_metrics if m["feval_time_s"]  is not None]
+        kkt_times    = [m["kkt_time_s"]    for m in step_metrics if m["kkt_time_s"]    is not None]
+        iters        = [m["iterations"]    for m in step_metrics if m["iterations"]    is not None]
+        min_clears   = [m["min_clearance"] for m in step_metrics if m["min_clearance"] is not None]
+        n_vars_list  = [m["n_variables"]   for m in step_metrics if m["n_variables"]   is not None]
+        n_eq_list    = [m["n_eq"]          for m in step_metrics if m["n_eq"]          is not None]
+        n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
+        n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
+        n_steps      = len(step_metrics)
 
-    def _safe_stats(vals):
-        if not vals:
-            return {"median": None, "std": None, "min": None, "max": None}
-        return {
-            "median": _st.median(vals),
-            "std":    _st.stdev(vals) if len(vals) > 1 else 0.0,
-            "min":    min(vals),
-            "max":    max(vals),
+        def _safe_stats(vals):
+            if not vals:
+                return {"median": None, "std": None, "min": None, "max": None}
+            return {
+                "median": _st.median(vals),
+                "std":    _st.stdev(vals) if len(vals) > 1 else 0.0,
+                "min":    min(vals),
+                "max":    max(vals),
+            }
+
+        # ── convert obstacles to serializable format ──────────────────────────
+        obstacles_data = []
+        for obs in obstacles:
+            if hasattr(obs, 'vertices') and obs.vertices is not None:
+                obstacles_data.append({"vertices": obs.vertices.tolist()})
+            elif hasattr(obs, 'x_min'):
+                # RectangleRegion
+                verts = [
+                    [obs.x_min, obs.y_min],
+                    [obs.x_max, obs.y_min],
+                    [obs.x_max, obs.y_max],
+                    [obs.x_min, obs.y_max],
+                ]
+                obstacles_data.append({"vertices": verts})
+            elif hasattr(obs, 'get_convex_rep'):
+                # PolytopeRegion - try to get vertices
+                try:
+                    A, b = obs.get_convex_rep()
+                    # For now, store as halfplanes
+                    obstacles_data.append({
+                        "halfplanes": [[A[i].tolist(), float(b[i])] for i in range(len(A))]
+                    })
+                except:
+                    obstacles_data.append({"type": "polytope"})
+
+        single_results = {
+            # ── identification ────────────────────────────────────────────────
+            "env_json":       env_json_path,
+            "n_obstacles":    n_obs,
+            "env_idx":        env_idx,
+            "controller":     controller_type,
+            "robot_shape":    robot_shape,
+            # ── problem size (constant per env) ───────────────────────────────
+            "problem_size": {
+                "n_variables":   getattr(opt, 'nr_variables',   None),
+                "n_constraints": getattr(opt, 'nr_constraints', None),
+            },
+            # ── eq/ineq counts per step (may vary if active obstacle set changes)
+            "n_variables_steps": n_vars_list,
+            "n_eq_steps":    n_eq_list,
+            "n_ineq_steps":  n_ineq_list,
+            # ── obstacle data ─────────────────────────────────────────────────
+            "obstacles":     obstacles_data,
+            # ── per-step timing ───────────────────────────────────────────────
+            "comp_time_s":    _safe_stats(comp_times),
+            "feval_time_s":   _safe_stats(feval_times),
+            "kkt_time_s":     _safe_stats(kkt_times),
+            # ── solver behaviour ──────────────────────────────────────────────
+            "iterations":     _safe_stats(iters),
+            "n_steps":        n_steps,
+            "n_infeasible":   n_infeasible,
+            "infeasibility_rate": n_infeasible / n_steps if n_steps > 0 else None,
+            # ── safety (clearance to obstacles) ──────────────────────────────
+            "min_clearance":  _safe_stats(min_clears),
+            # ── full per-step log (for detailed analysis) ────────────────────
+            "steps": step_metrics,
         }
 
-    # ── convert obstacles to serializable format ──────────────────────────
-    obstacles_data = []
-    for obs in obstacles:
-        if hasattr(obs, 'vertices') and obs.vertices is not None:
-            obstacles_data.append({"vertices": obs.vertices.tolist()})
-        elif hasattr(obs, 'x_min'):
-            # RectangleRegion
-            verts = [
-                [obs.x_min, obs.y_min],
-                [obs.x_max, obs.y_min],
-                [obs.x_max, obs.y_max],
-                [obs.x_min, obs.y_max],
-            ]
-            obstacles_data.append({"vertices": verts})
-        elif hasattr(obs, 'get_convex_rep'):
-            # PolytopeRegion - try to get vertices
-            try:
-                A, b = obs.get_convex_rep()
-                # For now, store as halfplanes
-                obstacles_data.append({
-                    "halfplanes": [[A[i].tolist(), float(b[i])] for i in range(len(A))]
-                })
-            except:
-                obstacles_data.append({"type": "polytope"})
-
-    results = {
-        # ── identification ────────────────────────────────────────────────
-        "env_json":       env_json_path,
-        "n_obstacles":    n_obs,
-        "env_idx":        env_idx,
-        "controller":     controller_type,
-        "robot_shape":    robot_shape,
-        # ── problem size (constant per env) ───────────────────────────────
-        "problem_size": {
-            "n_variables":   getattr(opt, 'nr_variables',   None),
-            "n_constraints": getattr(opt, 'nr_constraints', None),
-        },
-        # ── eq/ineq counts per step (may vary if active obstacle set changes)
-        "n_variables_steps": n_vars_list,
-        "n_eq_steps":    n_eq_list,
-        "n_ineq_steps":  n_ineq_list,
-        # ── obstacle data ─────────────────────────────────────────────────
-        "obstacles":     obstacles_data,
-        # ── per-step timing ───────────────────────────────────────────────
-        "comp_time_s":    _safe_stats(comp_times),
-        "feval_time_s":   _safe_stats(feval_times),
-        "kkt_time_s":     _safe_stats(kkt_times),
-        # ── solver behaviour ──────────────────────────────────────────────
-        "iterations":     _safe_stats(iters),
-        "n_steps":        n_steps,
-        "n_infeasible":   n_infeasible,
-        "infeasibility_rate": n_infeasible / n_steps if n_steps > 0 else None,
-        # ── safety (clearance to obstacles) ──────────────────────────────
-        "min_clearance":  _safe_stats(min_clears),
-        # ── full per-step log (for detailed analysis) ────────────────────
-        "steps": step_metrics,
-    }
+        results.append(single_results)
+        print("="*60)
 
     with open(out_path, "w") as f:
         _json.dump(results, f, indent=2)
 
     print(f"\n  Results saved → {out_path}")
-    print(f"  Steps: {n_steps}  |  Infeasible: {n_infeasible}"
-          f"  |  Median solve: "
-          f"{results['comp_time_s']['median']:.4f}s"
-          if results['comp_time_s']['median'] is not None else "")
+    
+    print("\n".join(
+        f"Steps: {n_steps}  |  Infeasible: {n_infeasible}  |  "
+        f"Median solve: {res['comp_time_s']['median']:.4f}s"
+        if res["comp_time_s"]["median"] is not None
+        else
+        f"Steps: {n_steps}  |  Infeasible: {n_infeasible}  |  Median solve: N/A"
+        for res in results
+    ))
+
     return results
 
 
@@ -708,7 +745,7 @@ if __name__ == "__main__":
         envs_per_count = 1, #10
         robot_shape = "rectangle",
         controllers = ["dcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = True,   # <── set True to re-enable live plots
+        enable_vis  = False,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

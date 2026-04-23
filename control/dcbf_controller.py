@@ -170,10 +170,13 @@ class NmpcDcbfController:
         # Global path is A* solution, not passed on to MPC?
 
         # --- 2. CONTROL STEP (DCBF) ---
-        print("Local trajectory: ", local_trajectory.shape)
-        self._optimizer.setup(self._param, system, local_trajectory, obstacles)
+        self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = False)
         self._opt_sol = self._optimizer.solve_nlp()
-        print(f"Current position: {system._state._x[:2]}")
+
+        if self._opt_sol is None:
+            # Resolve with cold start instead of warm start
+            self._optimizer.setup(self._param, system, local_trajectory, obstacles, cold_start = True)
+            self._opt_sol = self._optimizer.solve_nlp()
 
         mpc_trajectory = []
         for i in range(self._param.horizon):
