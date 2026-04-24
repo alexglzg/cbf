@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from control.dcbf_optimizer import NmpcDcbfOptimizerParam
 from control.dcbf_controller import NmpcDcbfController
 from control.lse_optimizer import NmpcLseOptimizer
-from control.lse_controller import NmpcLseController
+from control.lse_controller import NmpcLseController, LseControllerParam
 from models.dubin_car import (
     DubinCarDynamics,
     DubinCarGeometry,
@@ -267,7 +267,7 @@ def kinematic_car_all_shapes_simulation_test(maze_type, robot_shape, controller_
     if controller_type == "dcbf":
         robot.set_controller(NmpcDcbfController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
     elif controller_type == "pipcbf":
-        robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=opt_param))
+        robot.set_controller(NmpcLseController(dynamics=KinematicCarDynamics(), opt_param=LseControllerParam()))
     sim = SingleAgentSimulation(robot, obstacles, goal_pos)
     sim.run_navigation(100.0, goal_pos, zone=0.1)
     print("median: ", st.median(robot._controller._optimizer.solver_times))
@@ -741,12 +741,12 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 8,
-        max_obs     = 8,
+        min_obs     = 1,
+        max_obs     = 4,
         envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = True,   # <── set True to re-enable live plots
+        controllers = ["dcbf"], #["dcbf", "pipcbf"],
+        enable_vis  = False,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

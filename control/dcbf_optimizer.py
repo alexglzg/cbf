@@ -196,6 +196,7 @@ class NmpcDbcfOptimizer:
         """Add DCBF constraint for convex-to-convex - local to each stage."""
         mat_A, vec_b = obs_geo.get_convex_rep()
         robot_G, robot_g = robot_geo.get_convex_rep()
+
         # get current value of cbf
         cbf_curr, lamb_curr, mu_curr = get_dist_region_to_region(
             mat_A,
@@ -459,7 +460,5 @@ class NmpcDbcfOptimizer:
             self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
-
-            # Resolve with new initial guess
 
             return None

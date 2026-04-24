@@ -252,9 +252,12 @@ class NmpcLseOptimizer:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
         option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
-                  "fatrop.max_iter": 100, "fatrop.tol": 1e-4,
+                  "fatrop.max_iter": 250, "fatrop.tol": 1e-4, "fatrop.mu_init": 1e-1,
                   "structure_detection": "auto", "debug": True}
-        self.opti.solver("fatrop", option)
+        # self.opti.solver("fatrop", option)
+        # option = {"ipopt.print_level": 5, "print_time": 1, "expand": True,
+        #           "ipopt.max_iter": 250, "ipopt.tol": 1e-4}
+        # self.opti.solver("ipopt", option)
 
         # ── problem-size snapshot ─────────────────────────────────────────
         self.nr_variables   = self.opti.nx

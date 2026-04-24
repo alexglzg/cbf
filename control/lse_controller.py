@@ -7,10 +7,36 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from control.dcbf_optimizer import NmpcDcbfOptimizerParam
 from control.firi import FIRISolver
 from control.lse_optimizer import NmpcLseOptimizer
 
 DEBUG_VIS = True
+
+class LseControllerParam(NmpcDcbfOptimizerParam):
+    """
+    Parameters specific to LSE/FIRI-style safe set construction.
+    Mirrors firi_scan_node.cpp parameters.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # --- Robot geometry ---
+        self.robot_length = 0.6
+        self.robot_width = 0.3
+        self.footprint_offset_x = 0.265
+
+        # --- Path-guided seeding ---
+        self.seed_use_path = True
+        self.seed_n_samples = 4
+        self.seed_lookahead = 1.5
+        # self.seed_path_timeout = 5.0  # seconds
+
+        # --- Heading-aligned bounding box ---
+        self.bbox_ahead = 3.0
+        self.bbox_behind = 1.0
+        self.bbox_side = 2.0
 
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
@@ -33,7 +59,6 @@ def _closest_point_on_convex_poly(point: np.ndarray, verts: np.ndarray) -> np.nd
             best_dist = d
             best_pt   = proj
     return best_pt
-
 
 def _robot_world_verts(system) -> np.ndarray:
     """
@@ -83,7 +108,6 @@ def _robot_world_verts(system) -> np.ndarray:
         all_verts.append(v_world)
 
     return np.vstack(all_verts) if all_verts else np.array([[x, y]])
-
 
 def _clearance_robot_to_obstacle(robot_verts: np.ndarray, obs) -> float:
     """Minimum distance between robot polygon and one obstacle polygon."""
@@ -135,6 +159,69 @@ class NmpcLseController:
         self._optimizer = NmpcLseOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
         self._opt_sol = None
         self._fig = None
+        self.mpc_trajectory = None
+
+    def get_path_seed_points(self, system):
+        # lp = self._param
+        # now = self._now()
+
+        # Try MPC trajectory first
+        if self.mpc_trajectory is not None:
+            # age = now - self._mpc_traj_time
+            # if age < lp.seed_path_timeout:
+            pts = self._sample_first_n_from_path(
+                self.mpc_trajectory, system
+            )
+                # if pts:
+                #     return pts, "mpc"
+
+        # Fallback to global path
+        if self._global_path is not None:
+            # age = now - self._global_path_time
+            # if age < lp.seed_path_timeout:
+            pts = self._sample_first_n_from_path(
+                self._global_path, system
+            )
+                # if pts:
+                #     return pts, "plan"
+
+        # Fallback if no global path has been computed
+        return [], "footprint"
+
+    def _sample_first_n_from_path(self, path, system):
+        lp = self._param
+
+        if len(path) == 0 or lp.seed_n_samples <= 0:
+            return []
+
+        state = system._state._x
+        robot_xy = np.array([state[0], state[1]])
+
+        # Find closest point on look-ahead trajectory to the current point
+        # Can happen that the robot has already progressed compared to when the MPC trajectory is computed and this polytope is necessary
+        # It is to make sure all following points of the trajectory can be within the polytope that is constructed and solutions do not need to change drastically between MPC/polytope iterations
+        d2 = [(p[0]-robot_xy[0])**2 + (p[1]-robot_xy[1])**2 for p in path]
+        closest_idx = int(np.argmin(d2))
+
+        # Check if that point is already further than where we want to lookahead - does this ever happen?
+        if np.sqrt(d2[closest_idx]) > lp.seed_lookahead:
+            return []
+
+        front_edge_dist = lp.footprint_offset_x + lp.robot_length / 2.0
+        skip_dist_sq = front_edge_dist ** 2
+
+        # Add a number of points in front of the robot to the seed if they are a certain distance away from the robot
+        pts = []
+        for p in path[closest_idx + 1:]:
+            if len(pts) >= lp.seed_n_samples:
+                break
+            dx = p[0] - robot_xy[0]
+            dy = p[1] - robot_xy[1]
+            if dx*dx + dy*dy < skip_dist_sq:
+                continue
+            pts.append(np.array(p))
+
+        return pts
 
     def extract_obstacles_halfplanes(self, obstacles):
         obs_hps_list = []
@@ -181,7 +268,36 @@ class NmpcLseController:
         else:
             robot_local_verts = np.zeros((1, 2))
 
+        forward_seeds = self.get_path_seed_points(system)
+        for seed in forward_seeds:
+            seed_verts_list.append(seed)
+
+        import pdb;pdb.set_trace()
+
+        # Add different FIRI seed guides corresponding to meco_truck github
+        # // 4. Add path-guided seed points
+        # std::string seed_source = "footprint";
+        # if (seed_use_path_) {
+        #     auto path_seeds = get_path_seed_points(seed_source);
+        #     for (const auto& pt : path_seeds) {
+        #         seed.push_back(pt);
+        #     }
+        # }
+
+        # // 5. Heading-aligned bounding box
+        # const Eigen::Vector2d fwd = R.col(0);
+        # const Eigen::Vector2d lft = R.col(1);
+
+        # std::vector<firi::HalfPlane> bbox_planes = {
+        #     { fwd,  fwd.dot(robot_pos_) + bbox_ahead_},
+        #     {-fwd, -fwd.dot(robot_pos_) + bbox_behind_},
+        #     { lft,  lft.dot(robot_pos_) + bbox_side_},
+        #     {-lft, -lft.dot(robot_pos_) + bbox_side_}
+        # };
+
         # Local BBox (Square 4x4 around robot) as list of halfplanes [normal, offset]
+        # TODO: change to take heading of robot into account
+        # TODO: check seed_verts_list compared to implementation that we used on on-board experiments
         bbox_x_min, bbox_x_max = x - 2.0, x + 2.0
         bbox_y_min, bbox_y_max = y - 2.0, y + 2.0
         bbox = [
@@ -207,16 +323,16 @@ class NmpcLseController:
             self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=True)
             self._opt_sol = self._optimizer.solve_nlp()
 
-        mpc_trajectory = []
+        self.mpc_trajectory = []
         for i in range(self._param.horizon):
-            mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
+            self.mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
 
         # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
         if self._enable_vis:
             # Convert bbox halfplanes to tuple format for visualization
             bbox_tuple = (bbox_x_min, bbox_x_max, bbox_y_min, bbox_y_max)
-            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(mpc_trajectory))
+            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self.mpc_trajectory))
 
         
         if self._opt_sol:
