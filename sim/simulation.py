@@ -40,6 +40,7 @@ class Robot:
     def run_global_planner(self, sys, obstacles, goal_pos):
         # TODO: global path shall be generated with `system` and `obstacles`.
         self._global_path = self._global_planner.generate_path(sys, obstacles, goal_pos)
+        self._controller._global_path = self._global_path
         self._global_planner.logging(self._global_planner_logger)
 
     def run_local_planner(self):
@@ -48,6 +49,8 @@ class Robot:
         self._local_planner.logging(self._local_planner_logger)
 
     def run_controller(self, obstacles):
+        # Set local path for FIRI extraction
+        self._controller._local_path = self._local_trajectory
         self._control_action = self._controller.generate_control_input(
             self._system, self._global_path, self._local_trajectory, obstacles
         )

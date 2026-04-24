@@ -742,10 +742,10 @@ if __name__ == "__main__":
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
         min_obs     = 1,
-        max_obs     = 4,
+        max_obs     = 1,
         envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["dcbf"], #["dcbf", "pipcbf"],
+        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 

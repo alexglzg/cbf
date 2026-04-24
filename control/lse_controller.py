@@ -159,31 +159,40 @@ class NmpcLseController:
         self._optimizer = NmpcLseOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
         self._opt_sol = None
         self._fig = None
-        self.mpc_trajectory = None
+        self._mpc_trajectory = None
+        self._global_path = None
+        self._local_path = None
 
     def get_path_seed_points(self, system):
         # lp = self._param
         # now = self._now()
 
         # Try MPC trajectory first
-        if self.mpc_trajectory is not None:
+        if self._mpc_trajectory is not None:
             # age = now - self._mpc_traj_time
             # if age < lp.seed_path_timeout:
+            print("MPC path sampling!")
             pts = self._sample_first_n_from_path(
-                self.mpc_trajectory, system
+                self._mpc_trajectory, system
             )
                 # if pts:
                 #     return pts, "mpc"
 
-        # Fallback to global path
-        if self._global_path is not None:
-            # age = now - self._global_path_time
-            # if age < lp.seed_path_timeout:
+        if self._local_path is not None:
+            print("Local path sampling!")
             pts = self._sample_first_n_from_path(
-                self._global_path, system
+                self._local_path, system
             )
-                # if pts:
-                #     return pts, "plan"
+
+        # # Fallback to global path
+        # if self._global_path is not None:
+        #     # age = now - self._global_path_time
+        #     # if age < lp.seed_path_timeout:
+        #     pts = self._sample_first_n_from_path(
+        #         self._global_path, system
+        #     )
+        #         # if pts:
+        #         #     return pts, "plan"
 
         # Fallback if no global path has been computed
         return [], "footprint"
@@ -323,9 +332,9 @@ class NmpcLseController:
             self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=True)
             self._opt_sol = self._optimizer.solve_nlp()
 
-        self.mpc_trajectory = []
+        self._mpc_trajectory = []
         for i in range(self._param.horizon):
-            self.mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
+            self._mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
 
         # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
