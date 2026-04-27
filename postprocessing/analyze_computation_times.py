@@ -47,17 +47,28 @@ def load_results(obstacle_count_dir):
     for json_file in sorted(dir_path.glob("*.json")):
         try:
             with open(json_file, 'r') as f:
-                result = json.load(f)
+                payload = json.load(f)
+ 
+            # Normalise: a bare dict counts as a single-element list
+            if isinstance(payload, dict):
+                payload = [payload]
+ 
+            n_entries = len(payload)
+            for idx, result in enumerate(payload):
                 results.append(result)
-                file_names.append(json_file.stem)
-                print(f"Loaded {json_file.stem}")
+                # Use a suffix only when there are multiple poses per file
+                label = json_file.stem if n_entries == 1 else f"{json_file.stem}_{idx}"
+                file_names.append(label)
+ 
+            print(f"Loaded {json_file.stem}  ({n_entries} run(s))")
         except Exception as e:
             print(f"Error loading {json_file}: {e}")
-    
+ 
     if not results:
         print(f"No JSON files found in {obstacle_count_dir}")
-    
+ 
     return results, file_names
+
 
 
 def extract_timing_data(results, file_names):
@@ -77,9 +88,19 @@ def extract_timing_data(results, file_names):
         DataFrame with columns: environment, controller, kkt_time, total_time
     """
     rows = []
+
+    # for result, fname in zip(results, file_names):
+    #     print("File: ", fname)
+    # File:  env0_dcbf
+    # File:  env0_pipcbf
+    # File:  env1_dcbf
+    # File:  env1_pipcbf
     
+    # Loop over dcbf or pipcbf results
     for result, fname in zip(results, file_names):
         controller = result.get('controller', 'unknown')
+        assert controller in ('dcbf', 'pipcbf'), \
+        f"{fname}: unexpected or missing controller field '{controller}'"
         
         # Extract KKT times (per-step)
         kkt_stats = result.get('kkt_time_s', {})

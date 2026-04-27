@@ -25,12 +25,12 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         # --- Robot geometry ---
         self.robot_length = 0.6
         self.robot_width = 0.3
-        self.footprint_offset_x = 0.265
+        self.footprint_offset_x = 0.0 #0.265 is for truck
 
         # --- Path-guided seeding ---
         self.seed_use_path = True
-        self.seed_n_samples = 4
-        self.seed_lookahead = 1.5
+        self.seed_n_samples = 2
+        self.seed_lookahead = 1.0
         # self.seed_path_timeout = 5.0  # seconds
 
         # --- Heading-aligned bounding box ---
@@ -146,6 +146,20 @@ def _clearance_robot_to_obstacle(robot_verts: np.ndarray, obs) -> float:
         min_dist = min(min_dist, float(np.linalg.norm(ov - cp)))
     return min_dist
 
+def _intersect_planes(p1, p2):
+    """
+    Intersect two lines a*x + b*y = c
+    """
+    a1, b1, c1 = p1[0], p1[1], p1[2]
+    a2, b2, c2 = p2[0], p2[1], p2[2]
+
+    A = np.array([[a1, b1],
+                  [a2, b2]])
+    b = np.array([c1, c2])
+
+    return np.linalg.solve(A, b)
+
+
 class NmpcLseController:
     def __init__(self, dynamics, opt_param, enable_vis=True):
         self._param = opt_param
@@ -167,22 +181,23 @@ class NmpcLseController:
         # lp = self._param
         # now = self._now()
 
-        # Try MPC trajectory first
-        if self._mpc_trajectory is not None:
-            # age = now - self._mpc_traj_time
-            # if age < lp.seed_path_timeout:
-            print("MPC path sampling!")
-            pts = self._sample_first_n_from_path(
-                self._mpc_trajectory, system
-            )
-                # if pts:
-                #     return pts, "mpc"
+        # # Try MPC trajectory first
+        # if self._mpc_trajectory is not None:
+        #     # age = now - self._mpc_traj_time
+        #     # if age < lp.seed_path_timeout:
+        #     print("MPC path sampling!")
+        #     pts = self._sample_first_n_from_path(
+        #         self._mpc_trajectory, system
+        #     )
+        #     if pts:
+        #         return pts, "mpc"
 
         if self._local_path is not None:
             print("Local path sampling!")
             pts = self._sample_first_n_from_path(
                 self._local_path, system
             )
+            if pts: return pts, "local"
 
         # # Fallback to global path
         # if self._global_path is not None:
@@ -214,6 +229,7 @@ class NmpcLseController:
 
         # Check if that point is already further than where we want to lookahead - does this ever happen?
         if np.sqrt(d2[closest_idx]) > lp.seed_lookahead:
+            print("Closest point ahead of look_ahead!")
             return []
 
         front_edge_dist = lp.footprint_offset_x + lp.robot_length / 2.0
@@ -223,6 +239,7 @@ class NmpcLseController:
         pts = []
         for p in path[closest_idx + 1:]:
             if len(pts) >= lp.seed_n_samples:
+                print(f"{len(pts)} samples found")
                 break
             dx = p[0] - robot_xy[0]
             dy = p[1] - robot_xy[1]
@@ -242,6 +259,33 @@ class NmpcLseController:
                     temp.append(np.array([A[i][0], A[i][1], b[i][0]]))
             obs_hps_list.append(temp)
         return obs_hps_list
+
+    
+    def build_heading_aligned_bbox(self, system):
+        lp = self._param
+
+        state = system._state._x
+        x, y, theta = state[0], state[1], state[3]
+
+        c, s = np.cos(theta), np.sin(theta)
+
+        # Forward and left directions (as scalars, not arrays)
+        fwd_x, fwd_y = c, s
+        lft_x, lft_y = -s, c
+
+        # Position
+        px, py = x, y
+
+        # Each constraint is: a*x + b*y <= c
+        bbox = [
+            [ fwd_x,  fwd_y,  fwd_x * px + fwd_y * py + lp.bbox_ahead ],
+            [-fwd_x, -fwd_y, -fwd_x * px - fwd_y * py + lp.bbox_behind],
+            [ lft_x,  lft_y,  lft_x * px + lft_y * py + lp.bbox_side ],
+            [-lft_x, -lft_y, -lft_x * px - lft_y * py + lp.bbox_side ],
+        ]
+
+        return bbox
+
 
     def generate_control_input(self, system, global_path, local_trajectory, obstacles):
         obs_verts_list = extract_obstacle_vertices(obstacles)
@@ -277,44 +321,28 @@ class NmpcLseController:
         else:
             robot_local_verts = np.zeros((1, 2))
 
-        forward_seeds = self.get_path_seed_points(system)
-        for seed in forward_seeds:
-            seed_verts_list.append(seed)
-
-        import pdb;pdb.set_trace()
-
         # Add different FIRI seed guides corresponding to meco_truck github
         # // 4. Add path-guided seed points
-        # std::string seed_source = "footprint";
-        # if (seed_use_path_) {
-        #     auto path_seeds = get_path_seed_points(seed_source);
-        #     for (const auto& pt : path_seeds) {
-        #         seed.push_back(pt);
-        #     }
-        # }
+        forward_seeds, _ = self.get_path_seed_points(system)
+        for seed in forward_seeds:
+            seed_verts_list.append(seed[0:2])
 
         # // 5. Heading-aligned bounding box
-        # const Eigen::Vector2d fwd = R.col(0);
-        # const Eigen::Vector2d lft = R.col(1);
-
-        # std::vector<firi::HalfPlane> bbox_planes = {
-        #     { fwd,  fwd.dot(robot_pos_) + bbox_ahead_},
-        #     {-fwd, -fwd.dot(robot_pos_) + bbox_behind_},
-        #     { lft,  lft.dot(robot_pos_) + bbox_side_},
-        #     {-lft, -lft.dot(robot_pos_) + bbox_side_}
-        # };
+        bbox = self.build_heading_aligned_bbox(system)
 
         # Local BBox (Square 4x4 around robot) as list of halfplanes [normal, offset]
         # TODO: change to take heading of robot into account
         # TODO: check seed_verts_list compared to implementation that we used on on-board experiments
         bbox_x_min, bbox_x_max = x - 2.0, x + 2.0
         bbox_y_min, bbox_y_max = y - 2.0, y + 2.0
-        bbox = [
-            [-1, 0, -bbox_x_min],   # x >= x_min
-            [1, 0, bbox_x_max],      # x <= x_max
-            [0, -1, -bbox_y_min],    # y >= y_min
-            [0, 1, bbox_y_max]       # y <= y_max
-        ]
+        # bbox = [
+        #     [-1, 0, -bbox_x_min],   # x >= x_min
+        #     [1, 0, bbox_x_max],      # x <= x_max
+        #     [0, -1, -bbox_y_min],    # y >= y_min
+        #     [0, 1, bbox_y_max]       # y <= y_max
+        # ]
+
+        # import pdb;pdb.set_trace()
         
         # Compute best ellipsoid, and polytope
         firi_result = self.firi_solver.compute_from_halfplanes(obs_hps_list, seed_verts_list, bbox, max_iter=5, rho=0.02)
@@ -324,6 +352,8 @@ class NmpcLseController:
         A_safe = np.vstack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in firi_result.planes])
         b_safe = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in firi_result.planes])
 
+        # import pdb;pdb.set_trace()
+
         self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=False)
         self._opt_sol = self._optimizer.solve_nlp()
 
@@ -332,17 +362,22 @@ class NmpcLseController:
             self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=True)
             self._opt_sol = self._optimizer.solve_nlp()
 
+        # TODO add safeguard for infeasible solution
         self._mpc_trajectory = []
-        for i in range(self._param.horizon):
-            self._mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
+        if self._opt_sol:
+            for i in range(self._param.horizon):
+                self._mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
 
-        # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
+        A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
         if self._enable_vis:
             # Convert bbox halfplanes to tuple format for visualization
             bbox_tuple = (bbox_x_min, bbox_x_max, bbox_y_min, bbox_y_max)
-            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self.mpc_trajectory))
-
+            # bbox_tuple = (bbox[0][-1], bbox[1][-1], bbox[2][-1], bbox[3][-1])
+            # print("bbox: ", bbox)
+            # print("bbox_tupple: ", bbox_tuple)
+            # self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory))
+            self._visualize(seed_verts_list, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
         
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])
@@ -370,6 +405,7 @@ class NmpcLseController:
             "n_variables":   opt.n_variables_steps[-1] if hasattr(opt, 'n_variables_steps') and opt.n_variables_steps else None,
             "n_eq":          opt.n_eq_steps[-1]       if opt.n_eq_steps       else None,
             "n_ineq":        opt.n_ineq_steps[-1]     if opt.n_ineq_steps     else None,
+            "n_halfplanes":  opt.n_halfplanes_steps[-1]     if opt.n_halfplanes_steps     else None,
             "clearances":    clearances,
             "min_clearance": float(min(clearances))   if clearances           else None,
         }
@@ -382,7 +418,7 @@ class NmpcLseController:
             logger._xtrajs.append(np.column_stack(x_values).T)
             logger._utrajs.append(np.column_stack(u_values).T)
 
-    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory):
+    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory, bbox_full):
         if self._fig is None:
             plt.ioff()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
@@ -434,8 +470,24 @@ class NmpcLseController:
             )
         
         # Draw BBox
-        self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 
-                         linewidth=1, edgecolor='r', facecolor='none', linestyle='--', label='BBox'))
+        corners = np.array([
+            _intersect_planes(bbox_full[0], bbox_full[2]),
+            _intersect_planes(bbox_full[0], bbox_full[3]),
+            _intersect_planes(bbox_full[1], bbox_full[3]),
+            _intersect_planes(bbox_full[1], bbox_full[2]),
+        ])
+
+        self._ax.add_patch(
+            Polygon(
+                corners,
+                closed=True,
+                edgecolor='r',
+                facecolor='none',
+                linewidth=1,
+                linestyle='--',
+                label='BBox'
+            )
+        )
 
         # Draw Obstacles
         for obs in obstacles:

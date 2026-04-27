@@ -24,6 +24,7 @@ class NmpcLseOptimizer:
         self.n_variables_steps = []  # variable count per step
         self.n_eq_steps       = []   # equality constraint count per step
         self.n_ineq_steps     = []   # inequality constraint count per step
+        self.n_halfplanes_steps = []   # number of halfplanes (rows of A) per trajectory
         # Stage-wise storage for Fatrop (block diagonal structure)
         self.x = []      # x_0, x_1, ..., x_N
         self.u = []      # u_0, u_1, ..., u_{N-1}
@@ -85,6 +86,7 @@ class NmpcLseOptimizer:
     def add_obstacle_avoidance_constraint(self, param, system, safe_polytope, robot_local_verts, x_k, u_k):
         """Add obstacle avoidance constraints - local to each stage."""
         A_safe, b_safe = safe_polytope
+        self.A = A_safe #to log number of halfplanes
         if A_safe is None or A_safe.shape[0] == 0: 
             return
 
@@ -254,7 +256,7 @@ class NmpcLseOptimizer:
         option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
                   "fatrop.max_iter": 250, "fatrop.tol": 1e-4, "fatrop.mu_init": 1e-1,
                   "structure_detection": "auto", "debug": True}
-        # self.opti.solver("fatrop", option)
+        self.opti.solver("fatrop", option)
         # option = {"ipopt.print_level": 5, "print_time": 1, "expand": True,
         #           "ipopt.max_iter": 250, "ipopt.tol": 1e-4}
         # self.opti.solver("ipopt", option)
@@ -303,6 +305,7 @@ class NmpcLseOptimizer:
             self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
+            self.n_halfplanes_steps.append(int(self.A.shape[0]))
             print(f"solver time: {sol_time:.4f}s  iters: {iters}")
             return opt_sol
 

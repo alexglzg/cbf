@@ -408,6 +408,7 @@ def _collect_problem_size(optimizer) -> dict:
         "n_constraints":  getattr(optimizer, 'nr_constraints', None),
         "n_eq":           getattr(optimizer, '_n_eq',          None),
         "n_ineq":         getattr(optimizer, '_n_ineq',        None),
+        "n_halfplanes": getattr(optimizer, 'n_halfplanes_steps', None),
     }
 
 
@@ -531,7 +532,7 @@ def run_benchmark_env(
         elif controller_type == "pipcbf":
             controller = NmpcLseController(
                 dynamics=KinematicCarDynamics(),
-                opt_param=opt_param,
+                opt_param=LseControllerParam(),
                 enable_vis=enable_vis,
             )
         else:
@@ -570,6 +571,7 @@ def run_benchmark_env(
         n_vars_list  = [m["n_variables"]   for m in step_metrics if m["n_variables"]   is not None]
         n_eq_list    = [m["n_eq"]          for m in step_metrics if m["n_eq"]          is not None]
         n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
+        n_halfpl_list = [m["n_halfplanes"]        for m in step_metrics if m["n_halfplanes"]        is not None]
         n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
         n_steps      = len(step_metrics)
 
@@ -639,6 +641,8 @@ def run_benchmark_env(
             "min_clearance":  _safe_stats(min_clears),
             # ── full per-step log (for detailed analysis) ────────────────────
             "steps": step_metrics,
+            # -- number of halfplanes -----------------------------------------
+            "halfplanes": n_halfpl_list
         }
 
         results.append(single_results)
@@ -741,12 +745,12 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 1,
-        max_obs     = 1,
-        envs_per_count = 1, #10
+        min_obs     = 10,
+        max_obs     = 10,
+        envs_per_count = 2, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

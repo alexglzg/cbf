@@ -21,10 +21,59 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.kinematic_car import KinematicCarRectangleGeometry, KinematicCarMultipleGeometry
 
 
-def load_result(result_json_path):
-    """Load result from JSON file."""
+def load_result(result_json_path, index=0):
+    """
+    Load a single result dict from a JSON file.
+ 
+    The file may contain either a bare result dict **or** a list of result
+    dicts (one per start/goal pose for the same environment).  When a list is
+    found, *index* selects which entry to return.
+ 
+    Parameters:
+    -----------
+    result_json_path : str
+        Path to the JSON result file.
+    index : int
+        Which entry to return when the file holds multiple results (default 0).
+ 
+    Returns:
+    --------
+    result : dict
+        A single result dictionary.
+    """
     with open(result_json_path, 'r') as f:
-        return json.load(f)
+        payload = json.load(f)
+ 
+    if isinstance(payload, list):
+        if index >= len(payload):
+            raise IndexError(
+                f"Result file has {len(payload)} entries but index {index} was requested."
+            )
+        return payload[index]
+ 
+    # Bare dict — index is ignored (always the only entry)
+    return payload
+
+def load_results_from_file(result_json_path):
+    """
+    Load **all** result dicts from a JSON file (list or single dict).
+ 
+    Parameters:
+    -----------
+    result_json_path : str
+        Path to the JSON result file.
+ 
+    Returns:
+    --------
+    results : list of dict
+    """
+    with open(result_json_path, 'r') as f:
+        payload = json.load(f)
+ 
+    if isinstance(payload, list):
+        return payload
+    return [payload]
+
 
 
 def load_environment(env_json_path):
@@ -315,24 +364,64 @@ def visualize_result(result_json_path, env_json_path=None, robot_snapshot_indice
 if __name__ == '__main__':
     # Example usage
     import argparse
-    
+ 
     parser = argparse.ArgumentParser(description='Visualize single result JSON')
     parser.add_argument('result_json', help='Path to result JSON file')
     parser.add_argument('--env', help='Path to environment JSON file (optional)')
-    parser.add_argument('--output', help='Output file path (optional, default: show interactively)')
-    parser.add_argument('--snapshots', type=int, default=10, 
-                       help='Number of robot snapshots to show (default: 10)')
-    
+    parser.add_argument('--output', help='Output file path (optional, default: show interactively). '
+                        'When --all is used, this becomes a path prefix: <prefix>_<idx>.png')
+    parser.add_argument('--snapshots', type=int, default=10,
+                        help='Number of robot snapshots to show (default: 10)')
+ 
+    # Multi-run selection
+    run_group = parser.add_mutually_exclusive_group()
+    run_group.add_argument('--index', type=int, default=0,
+                           help='Index of the run to visualise when the JSON file contains '
+                                'multiple results (default: 0)')
+    run_group.add_argument('--all', dest='all_runs', action='store_true',
+                           help='Visualise every run stored in the JSON file. '
+                                'Figures are shown interactively or saved as '
+                                '<output-prefix>_<index>.png when --output is given.')
+ 
     args = parser.parse_args()
-    
-    # Create evenly spaced snapshot indices
-    result = load_result(args.result_json)
-    n_steps = result.get('n_steps', 100)
-    snapshot_indices = np.linspace(0, n_steps, args.snapshots, dtype=int)
-    
-    visualize_result(
-        args.result_json,
-        env_json_path=args.env,
-        robot_snapshot_indices=snapshot_indices,
-        output_path=args.output
-    )
+ 
+    if args.all_runs:
+        # ── Iterate over every run in the file ──────────────────────────────
+        all_results = load_results_from_file(args.result_json)
+        print(f"Found {len(all_results)} run(s) in {args.result_json}")
+ 
+        for idx, _ in enumerate(all_results):
+            print(f"\n── Run {idx} ──")
+            n_steps = all_results[idx].get('n_steps', 100)
+            snapshot_indices = np.linspace(0, n_steps, args.snapshots, dtype=int)
+ 
+            # Derive per-run output path when a prefix was supplied
+            if args.output:
+                base, ext = os.path.splitext(args.output)
+                ext = ext or '.png'
+                run_output = f"{base}_{idx}{ext}"
+            else:
+                run_output = None
+ 
+            # Temporarily patch load_result so visualize_result picks the right entry
+            visualize_result(
+                args.result_json,
+                env_json_path=args.env,
+                robot_snapshot_indices=snapshot_indices,
+                output_path=run_output,
+                _result_index=idx,
+            )
+    else:
+        # ── Single run ───────────────────────────────────────────────────────
+        result = load_result(args.result_json, index=args.index)
+        n_steps = result.get('n_steps', 100)
+        snapshot_indices = np.linspace(0, n_steps, args.snapshots, dtype=int)
+ 
+        visualize_result(
+            args.result_json,
+            env_json_path=args.env,
+            robot_snapshot_indices=snapshot_indices,
+            output_path=args.output,
+            _result_index=args.index,
+        )
+
