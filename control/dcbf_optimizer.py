@@ -437,6 +437,7 @@ class NmpcDbcfOptimizer:
             if sd_time >= 10.0:
                 # Seems to be bug in fatrop that it reports is very large
                 sol_time = stats.get('t_wall_total') - sd_time + sd_time / 1000
+                import pdb;pdb.set_trace()
             else:    
                 sol_time = stats.get('t_wall_total', float('nan'))
             t_feval  = (stats.get('t_wall_nlp_f', 0.0)

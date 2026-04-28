@@ -250,6 +250,7 @@ def extract_single_environment(result):
         'n_ineq': [],
         'infeasible': [],
         'min_clearance': [],
+        'comp_times': [],
     }
 
     # ---- Top-level step arrays ----
@@ -267,6 +268,8 @@ def extract_single_environment(result):
     for step in result.get('steps', []):
         if 'infeasible' in step:
             data['infeasible'].append(step['infeasible'])
+        if 'comp_time_s' in step:
+            data['comp_times'].append(step['comp_time_s'])
 
         # Fill missing metrics if not present at top level
         if not data['comp_time_s'] and 'comp_time_s' in step:
@@ -314,6 +317,7 @@ def extract_metrics_data(results):
                 'n_eq': [],
                 'n_ineq': [],
                 'iterations': [],
+                'clearance': [],
             }
         
         metrics = metrics_by_controller[controller]
@@ -344,8 +348,11 @@ def extract_metrics_data(results):
         # Per-step iterations
         for step_data in result.get('steps', []):
             iters = step_data.get('iterations')
+            clearances = step_data.get('min_clearance')
             if iters is not None:
                 metrics['iterations'].append(iters)
+            if clearances is not None:
+                metrics['clearance'].append(clearances)
     
     return metrics_by_controller
 
@@ -369,6 +376,7 @@ def print_metrics_table(metrics_by_controller):
         'n_eq': 'Equality Constraints',
         'n_ineq': 'Inequality Constraints',
         'iterations': 'Iterations',
+        'clearance': 'Clearance'
     }
     
     # Only print if we have data
@@ -385,7 +393,7 @@ def print_metrics_table(metrics_by_controller):
         print("-" * 80)
         
         table_data = []
-        for metric_name in ['n_variables', 'n_eq', 'n_ineq', 'iterations']:
+        for metric_name in ['n_variables', 'n_eq', 'n_ineq', 'iterations', 'clearance']:
             values = metrics[metric_name]
             if not values:
                 continue
@@ -393,10 +401,10 @@ def print_metrics_table(metrics_by_controller):
             values = np.array(values)
             table_data.append([
                 metric_labels[metric_name],
-                f"{np.median(values):.1f}",
-                f"{np.std(values):.2f}",
-                f"{np.min(values):.0f}",
-                f"{np.max(values):.0f}",
+                f"{np.median(values):.4f}",
+                f"{np.std(values):.4f}",
+                f"{np.min(values):.4f}",
+                f"{np.max(values):.4f}",
             ])
         
         print(tabulate(
@@ -406,7 +414,7 @@ def print_metrics_table(metrics_by_controller):
         ))
     else:
         # Multiple controllers - print comparison table
-        for metric_name in ['n_variables', 'n_eq', 'n_ineq', 'iterations']:
+        for metric_name in ['n_variables', 'n_eq', 'n_ineq', 'iterations', 'clearance']:
             table_data = []
             
             for controller in sorted(metrics_by_controller.keys()):
@@ -419,10 +427,10 @@ def print_metrics_table(metrics_by_controller):
                 values = np.array(values)
                 table_data.append([
                     controller.upper(),
-                    f"{np.median(values):.1f}",
-                    f"{np.std(values):.2f}",
-                    f"{np.min(values):.0f}",
-                    f"{np.max(values):.0f}",
+                    f"{np.median(values):.4f}",
+                    f"{np.std(values):.4f}",
+                    f"{np.min(values):.4f}",
+                    f"{np.max(values):.4f}",
                 ])
             
             if table_data:
@@ -563,10 +571,11 @@ def main():
     print(f"Loaded {len(results)} result files\n")
 
     # Load single environment
-    filename = "env2_pipcbf.json"
-    result = find_results_by_filename(results, filename, 'results/n10/')
+    filename = "env1_dcbf.json"
+    result = find_results_by_filename(results, filename, 'results/n3/')
     data = extract_single_environment(result)
     # print(f"Infeasibilities in file {filename}: {data['infeasible']}")
+    print(f"Max comp time [ms]: {max(data['comp_times']), np.argmax(data['comp_times'])}")
     
     # Extract timing data
     df_timing, feas = extract_timing_data(results, file_names)
@@ -577,17 +586,17 @@ def main():
     print(f"DCBF feas (%): {feas['pipcbf']['feas']/(feas['pipcbf']['feas'] + feas['pipcbf']['infeas']) * 100}")
     
     # Extract metrics data
-    metrics = extract_metrics_data(results)
+    # metrics = extract_metrics_data(results)
     
-    # Print tables
-    print_timing_summary(df_timing)
-    print_metrics_table(metrics)
+    # # Print tables
+    # print_timing_summary(df_timing)
+    # print_metrics_table(metrics)
     
-    # Create boxplots
-    output = args.output
-    if output is None and len(args.obstacle_count) > 0:
-        # Auto-generate output filename
-        output = f"timing_boxplot_{args.obstacle_count}.png"
+    # # Create boxplots
+    # output = args.output
+    # if output is None and len(args.obstacle_count) > 0:
+    #     # Auto-generate output filename
+    #     output = f"timing_boxplot_{args.obstacle_count}.png"
 
     # save = False
     # if save:
