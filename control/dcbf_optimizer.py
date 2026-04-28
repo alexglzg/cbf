@@ -242,7 +242,8 @@ class NmpcDbcfOptimizer:
         self.opti.subject_to(ca.mtimes(temp.T, temp) <= 1)
         self.opti.subject_to(omega_k >= 0)
         self.costs["decay_rate_relaxing"] += param.pomega * (omega_k - 1) ** 2
-        # warm start
+        
+        # # warm start
         self.opti.set_initial(lambda_k, lamb_curr)
         self.opti.set_initial(mu_k, mu_curr)
         self.opti.set_initial(omega_k, 0.1)
@@ -311,19 +312,28 @@ class NmpcDbcfOptimizer:
 
         # print("Nr DCBF constraints added: ", self.constr_cnt)
 
-    def add_warm_start(self, param, system, cold_start):
+    def add_warm_start(self, param, system, cold_start, local_trajectory = []):
         """Set warm start initial values using stage-wise variables."""
         if self._prev_x is None or self._prev_u is None or cold_start:
             print("COLD START MPC!")
-            # First step: fall back to nominal controller
-            x_ws, u_ws = system._dynamics.nominal_safe_controller(
-                self.state._x, 0.1, -1.0, 1.0
-            )
-            for k in range(len(self.x)):
-                self.opti.set_initial(self.x[k], x_ws)
-            for k in range(len(self.u)):
-                self.opti.set_initial(self.u[k], u_ws)
-            return
+            if not local_trajectory.size == 0:
+                self.opti.set_initial(self.x[0], system._state._x)
+                for k in range(1, len(self.x)):
+                    self.opti.set_initial(self.x[k], local_trajectory[k - 1, :])
+                # TODO add dynamics roll-out
+                for k in range(len(self.u)):
+                    self.opti.set_initial(self.u[k], 0.0)
+                return
+            else:
+                # First step: fall back to nominal controller
+                x_ws, u_ws = system._dynamics.nominal_safe_controller(
+                    self.state._x, 0.1, -1.0, 1.0
+                )
+                for k in range(len(self.x)):
+                    self.opti.set_initial(self.x[k], x_ws)
+                for k in range(len(self.u)):
+                    self.opti.set_initial(self.u[k], u_ws)
+                return
 
         N = param.horizon
 
@@ -381,14 +391,14 @@ class NmpcDbcfOptimizer:
         self.add_input_smoothness_cost(param)
         
         # # 4. Set warm start
-        self.add_warm_start(param, system, cold_start)
+        self.add_warm_start(param, system, cold_start, reference_trajectory)
 
     def solve_nlp(self):
         cost = 0
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
+        option = {"fatrop.print_level": 5, "print_time": 1, "expand": True,
                   "fatrop.max_iter": 250, "fatrop.tol": 1e-4, "fatrop.mu_init": 1e-1,
                   "structure_detection": "auto", "debug": True}
         self.opti.solver("fatrop", option)

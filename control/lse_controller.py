@@ -352,8 +352,6 @@ class NmpcLseController:
         A_safe = np.vstack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in firi_result.planes])
         b_safe = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in firi_result.planes])
 
-        # import pdb;pdb.set_trace()
-
         self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=False)
         self._opt_sol = self._optimizer.solve_nlp()
 

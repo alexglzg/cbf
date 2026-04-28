@@ -192,19 +192,28 @@ class NmpcLseOptimizer:
                 ca.mtimes(param.mat_dR, (u_kp1 - u_k)),
             )
             
-    def add_warm_start(self, param, system, cold_start):
+    def add_warm_start(self, param, system, cold_start, local_trajectory = []):
         """Set warm start initial values using stage-wise variables."""
         if self._prev_x is None or self._prev_u is None or cold_start:
             print("COLD START MPC!")
-            # First step: fall back to nominal controller
-            x_ws, u_ws = system._dynamics.nominal_safe_controller(
-                self.state._x, 0.1, -1.0, 1.0
-            )
-            for k in range(len(self.x)):
-                self.opti.set_initial(self.x[k], x_ws)
-            for k in range(len(self.u)):
-                self.opti.set_initial(self.u[k], u_ws)
-            return
+            if not local_trajectory.size == 0:
+                self.opti.set_initial(self.x[0], system._state._x)
+                for k in range(1, len(self.x)):
+                    self.opti.set_initial(self.x[k], local_trajectory[k - 1, :])
+                # TODO add dynamics roll-out
+                for k in range(len(self.u)):
+                    self.opti.set_initial(self.u[k], 0.0)
+                return
+            else:
+                # First step: fall back to nominal controller
+                x_ws, u_ws = system._dynamics.nominal_safe_controller(
+                    self.state._x, 0.1, -1.0, 1.0
+                )
+                for k in range(len(self.x)):
+                    self.opti.set_initial(self.x[k], x_ws)
+                for k in range(len(self.u)):
+                    self.opti.set_initial(self.u[k], u_ws)
+                return
 
         N = param.horizon
 
@@ -246,7 +255,7 @@ class NmpcLseOptimizer:
         self.add_input_smoothness_cost(param)
         
         # 4. Set warm start
-        self.add_warm_start(param, system, cold_start)
+        self.add_warm_start(param, system, cold_start, reference_trajectory)
 
     def solve_nlp(self):
         cost = 0

@@ -17,6 +17,8 @@ import seaborn as sns
 from pathlib import Path
 import argparse
 from tabulate import tabulate
+import os
+import re
 
 
 def load_results(obstacle_count_dir):
@@ -96,8 +98,7 @@ def extract_timing_data(results, file_names):
     # File:  env1_dcbf
     # File:  env1_pipcbf
 
-    kkt_time_lst = []
-    tot_time_lst = []
+    feas = {'dcbf': {'feas': 0, 'infeas': 0}, 'pipcbf': {'feas': 0, 'infeas': 0}}
     
     # Loop over dcbf or pipcbf results
     for result, fname in zip(results, file_names):
@@ -114,6 +115,10 @@ def extract_timing_data(results, file_names):
             kkt_time = step_data.get('kkt_time_s')
             comp_time = step_data.get('comp_time_s')
             infeasible = step_data.get('infeasible')
+            if infeasible:
+                feas[controller]['infeas'] += 1
+            else:
+                feas[controller]['feas'] += 1
             
             if kkt_time is not None and comp_time is not None:
                 rows.append({
@@ -140,8 +145,147 @@ def extract_timing_data(results, file_names):
     #   },
     
     df = pd.DataFrame(rows)
-    return df
+    return df, feas
 
+
+
+def find_results_by_filename(results, filename, results_folder):
+    """
+    Find the results dict corresponding to a given output filename,
+    restricting the search to files that exist inside results_folder
+    (recursively).
+
+    Parameters
+    ----------
+    results : list of dict
+        Parsed result dictionaries (already loaded).
+    filename : str
+        Result filename, e.g. 'env0_pipcbf.json'.
+    results_folder : str
+        Root results directory, e.g. 'results/n10'.
+
+    Returns
+    -------
+    result : dict
+        Matching results dictionary.
+
+    Raises
+    ------
+    ValueError
+        If the file does not exist in results_folder or no unique result matches.
+    """
+    # ---- Normalize paths ----
+    results_folder = os.path.abspath(os.path.expanduser(results_folder))
+    filename = os.path.basename(filename)
+
+    # ---- 1. Ensure file exists inside results_folder (recursive) ----
+    found_on_disk = False
+    for root, _, files in os.walk(results_folder):
+        if filename in files:
+            found_on_disk = True
+            break
+
+    if not found_on_disk:
+        raise ValueError(
+            f"File {filename} not found under {results_folder}"
+        )
+
+    # ---- 2. Parse env_idx and controller from filename ----
+    match = re.match(r"env(\d+)_(.+)\.json", filename)
+    if match is None:
+        raise ValueError(f"Invalid filename format: {filename}")
+
+    env_idx = int(match.group(1))
+    controller = match.group(2)
+
+    # ---- 3. Match against already-loaded results ----
+    matches = [
+        r for r in results
+        if r.get("env_idx") == env_idx
+        and r.get("controller") == controller
+    ]
+
+    if len(matches) == 0:
+        raise ValueError(
+            f"No loaded results match {filename} "
+            f"(env_idx={env_idx}, controller={controller})"
+        )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Multiple loaded results match {filename}"
+        )
+
+    return matches[0]
+
+
+def extract_single_environment(result):
+    """
+    Extract raw per-step metrics from a single results dictionary
+    corresponding to one JSON output file.
+
+    Parameters
+    ----------
+    result : dict
+        Single result dictionary (one JSON file)
+
+    Returns
+    -------
+    data : dict
+        Dictionary of arrays with all relevant metrics.
+    """
+    data = {
+        'env_idx': result.get('env_idx'),
+        'controller': result.get('controller'),
+        'problem_size': result.get('problem_size'),
+        'n_obstacles': result.get('n_obstacles'),
+        'robot_shape': result.get('robot_shape'),
+
+        'comp_time_s': [],
+        'feval_time_s': [],
+        'kkt_time_s': [],
+        'iterations': [],
+        'n_variables': [],
+        'n_eq': [],
+        'n_ineq': [],
+        'infeasible': [],
+        'min_clearance': [],
+    }
+
+    # ---- Top-level step arrays ----
+    data['comp_time_s'].extend(result.get('comp_time_s', []))
+    data['feval_time_s'].extend(result.get('feval_time_s', []))
+    data['kkt_time_s'].extend(result.get('kkt_time_s', []))
+    data['iterations'].extend(result.get('iterations', []))
+    data['min_clearance'].extend(result.get('min_clearance', []))
+
+    data['n_variables'].extend(result.get('n_variables_steps', []))
+    data['n_eq'].extend(result.get('n_eq_steps', []))
+    data['n_ineq'].extend(result.get('n_ineq_steps', []))
+
+    # ---- Per-step fallback / infeasibility flag ----
+    for step in result.get('steps', []):
+        if 'infeasible' in step:
+            data['infeasible'].append(step['infeasible'])
+
+        # Fill missing metrics if not present at top level
+        if not data['comp_time_s'] and 'comp_time_s' in step:
+            data['comp_time_s'].append(step['comp_time_s'])
+        if not data['feval_time_s'] and 'feval_time_s' in step:
+            data['feval_time_s'].append(step['feval_time_s'])
+        if not data['kkt_time_s'] and 'kkt_time_s' in step:
+            data['kkt_time_s'].append(step['kkt_time_s'])
+        if not data['iterations'] and 'iterations' in step:
+            data['iterations'].append(step['iterations'])
+
+        if not data['n_variables'] and 'n_variables' in step:
+            data['n_variables'].append(step['n_variables'])
+        if not data['n_eq'] and 'n_eq' in step:
+            data['n_eq'].append(step['n_eq'])
+        if not data['n_ineq'] and 'n_ineq' in step:
+            data['n_ineq'].append(step['n_ineq'])
+
+    return data
 
 def extract_metrics_data(results):
     """
@@ -417,30 +561,41 @@ def main():
         return
     
     print(f"Loaded {len(results)} result files\n")
+
+    # Load single environment
+    filename = "env2_pipcbf.json"
+    result = find_results_by_filename(results, filename, 'results/n10/')
+    data = extract_single_environment(result)
+    print(f"Infeasibilities in file {filename}: {data['infeasible']}")
     
     # Extract timing data
-    df_timing = extract_timing_data(results, file_names)
-    
-    # Extract metrics data
-    metrics = extract_metrics_data(results)
-    
-    # Print tables
-    print_timing_summary(df_timing)
-    print_metrics_table(metrics)
-    
-    # Create boxplots
-    output = args.output
-    if output is None and len(args.obstacle_count) > 0:
-        # Auto-generate output filename
-        output = f"timing_boxplot_{args.obstacle_count}.png"
+    df_timing, feas = extract_timing_data(results, file_names)
 
-    save = False
-    if save:
-        create_boxplots(df_timing, args.obstacle_count, output_path=output)
-    else:
-        create_boxplots(df_timing, args.obstacle_count, output_path=None)
+    print(f"DCBF feas: {feas['dcbf']['feas']}")
+    print(f"DCBF feas (%): {feas['dcbf']['feas']/(feas['dcbf']['feas'] + feas['dcbf']['infeas']) * 100}")
+    print(f"PiPCBF feas: {feas['pipcbf']['feas']}")
+    print(f"DCBF feas (%): {feas['pipcbf']['feas']/(feas['pipcbf']['feas'] + feas['pipcbf']['infeas']) * 100}")
     
-    print("Analysis complete!")
+    # # Extract metrics data
+    # metrics = extract_metrics_data(results)
+    
+    # # Print tables
+    # print_timing_summary(df_timing)
+    # print_metrics_table(metrics)
+    
+    # # Create boxplots
+    # output = args.output
+    # if output is None and len(args.obstacle_count) > 0:
+    #     # Auto-generate output filename
+    #     output = f"timing_boxplot_{args.obstacle_count}.png"
+
+    # # save = False
+    # # if save:
+    # #     create_boxplots(df_timing, args.obstacle_count, output_path=output)
+    # # else:
+    # #     create_boxplots(df_timing, args.obstacle_count, output_path=None)
+    
+    # print("Analysis complete!")
 
 
 if __name__ == '__main__':

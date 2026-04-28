@@ -576,13 +576,19 @@ def run_benchmark_env(
         n_steps      = len(step_metrics)
 
         def _safe_stats(vals):
-            if not vals:
+            import math
+
+            # Keep only finite (non-NaN, non-inf) values
+            clean_vals = [v for v in vals if v is not None and math.isfinite(v)]
+
+            if not clean_vals:
                 return {"median": None, "std": None, "min": None, "max": None}
+
             return {
-                "median": _st.median(vals),
-                "std":    _st.stdev(vals) if len(vals) > 1 else 0.0,
-                "min":    min(vals),
-                "max":    max(vals),
+                "median": _st.median(clean_vals),
+                "std":    _st.stdev(clean_vals) if len(clean_vals) > 1 else 0.0,
+                "min":    min(clean_vals),
+                "max":    max(clean_vals),
             }
 
         # ── convert obstacles to serializable format ──────────────────────────
@@ -716,23 +722,44 @@ def run_scalability_benchmark(
             continue
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
-        for env_idx, fname in env_files:
-            env_path = os.path.join(env_folder, fname)
-            for ctrl in controllers:
-                print(f"  Running env{env_idx}  controller={ctrl} …")
-                try:
-                    run_benchmark_env(
-                        env_json_path=env_path,
-                        n_obs=n_obs,
-                        env_idx=env_idx,
-                        robot_shape=robot_shape,
-                        controller_type=ctrl,
-                        enable_vis=enable_vis,
-                    )
-                except Exception as e:
-                    import traceback
-                    print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
-                    print(traceback.print_exc())
+        # Standalone run
+        env_idx = 4
+        fname = env_files[env_idx][1] # Filename
+        env_path = os.path.join(env_folder, fname)
+        for ctrl in controllers:
+            print(f"  Running env{env_idx}  controller={ctrl} …")
+            try:
+                run_benchmark_env(
+                    env_json_path=env_path,
+                    n_obs=n_obs,
+                    env_idx=env_idx,
+                    robot_shape=robot_shape,
+                    controller_type=ctrl,
+                    enable_vis=enable_vis,
+                )
+            except Exception as e:
+                import traceback
+                print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+                print(traceback.print_exc())
+
+        # # Full benchmark
+        # for env_idx, fname in env_files:
+        #     env_path = os.path.join(env_folder, fname)
+        #     for ctrl in controllers:
+        #         print(f"  Running env{env_idx}  controller={ctrl} …")
+        #         try:
+        #             run_benchmark_env(
+        #                 env_json_path=env_path,
+        #                 n_obs=n_obs,
+        #                 env_idx=env_idx,
+        #                 robot_shape=robot_shape,
+        #                 controller_type=ctrl,
+        #                 enable_vis=enable_vis,
+        #             )
+        #         except Exception as e:
+        #             import traceback
+        #             print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+        #             print(traceback.print_exc())
 
 
 if __name__ == "__main__":
@@ -745,11 +772,11 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 1,
-        max_obs     = 1,
-        envs_per_count = 1, #10
+        min_obs     = 7,
+        max_obs     = 7,
+        envs_per_count = 10, #10
         robot_shape = "rectangle",
-        controllers = ["dcbf"], #["dcbf", "pipcbf"],
+        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 
