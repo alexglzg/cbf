@@ -31,6 +31,7 @@ class NmpcDbcfOptimizer:
         self.kkt_times        = []   # total - feval time per step [s]
         self.iterations       = []   # solver iterations per step
         self.infeasible_steps = []   # True when solver raised RuntimeError
+        self.warm_infeasible_steps = []   # True when solver raised RuntimeError
         self.n_variables_steps = []  # variable count per step
         self.n_eq_steps       = []   # equality constraint count per step
         self.n_ineq_steps     = []   # inequality constraint count per step
@@ -393,7 +394,7 @@ class NmpcDbcfOptimizer:
         # # 4. Set warm start
         self.add_warm_start(param, system, cold_start, reference_trajectory)
 
-    def solve_nlp(self):
+    def solve_nlp(self, warm_start):
         cost = 0
         for cost_name in self.costs:
             cost += self.costs[cost_name]
@@ -432,7 +433,12 @@ class NmpcDbcfOptimizer:
             opt_sol = self.opti.solve()
             stats   = opt_sol.stats()
 
-            sol_time = stats.get('t_wall_total', float('nan'))
+            sd_time = stats['fatrop']['compute_sd_time']
+            if sd_time >= 10.0:
+                # Seems to be bug in fatrop that it reports is very large
+                sol_time = stats.get('t_wall_total') - sd_time + sd_time / 1000
+            else:    
+                sol_time = stats.get('t_wall_total', float('nan'))
             t_feval  = (stats.get('t_wall_nlp_f', 0.0)
                       + stats.get('t_wall_nlp_g', 0.0)
                       + stats.get('t_wall_nlp_grad_f', 0.0)
@@ -450,6 +456,7 @@ class NmpcDbcfOptimizer:
             self.feval_times.append(t_feval)
             self.kkt_times.append(t_kkt)
             self.iterations.append(iters)
+            self.warm_infeasible_steps.append(False)
             self.infeasible_steps.append(False)
             self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
@@ -461,16 +468,46 @@ class NmpcDbcfOptimizer:
         except RuntimeError as e:
             print(f"[DCBF] Solver failed: {e}")
 
-            self._prev_x = None
-            self._prev_u = None
+            if "time>=0" in str(e):
+                print(
+                    f"[DCBF] Solver failed with time>=0 assertion ")
+                self.opti.solve()
 
-            self.solver_times.append(float('nan'))
-            self.feval_times.append(float('nan'))
-            self.kkt_times.append(float('nan'))
-            self.iterations.append(0)
-            self.infeasible_steps.append(True)
-            self.n_variables_steps.append(self.nr_variables)
-            self.n_eq_steps.append(n_eq)
-            self.n_ineq_steps.append(n_ineq)
+            # self._prev_x = None
+            # self._prev_u = None
 
-            return None
+            if warm_start:
+                stats   = self.opti.stats()
+                sol_time = stats.get('t_wall_total', float('nan'))
+                t_feval  = (stats.get('t_wall_nlp_f', 0.0)
+                        + stats.get('t_wall_nlp_g', 0.0)
+                        + stats.get('t_wall_nlp_grad_f', 0.0)
+                        + stats.get('t_wall_nlp_jac_g', 0.0)
+                        + stats.get('t_wall_nlp_hess_l', 0.0))
+                # KKT time = total solve time minus pure function evaluation time
+                t_kkt    = sol_time - t_feval
+                iters    = stats.get('iter_count', 0)
+
+                self.solver_times.append(sol_time)
+                self.feval_times.append(t_feval)
+                self.kkt_times.append(t_kkt)
+                self.iterations.append(iters)
+                self.warm_infeasible_steps.append(True)
+                self.infeasible_steps.append(False)
+                self.n_variables_steps.append(self.nr_variables)
+                self.n_eq_steps.append(n_eq)
+                self.n_ineq_steps.append(n_ineq)
+                self.n_halfplanes_steps.append(0)
+                return None
+            else:
+                self.solver_times.append(float('nan'))
+                self.feval_times.append(float('nan'))
+                self.kkt_times.append(float('nan'))
+                self.iterations.append(0)
+                self.warm_infeasible_steps.append(True)
+                self.infeasible_steps.append(True)
+                self.n_variables_steps.append(self.nr_variables)
+                self.n_eq_steps.append(n_eq)
+                self.n_ineq_steps.append(n_ineq)
+                self.n_halfplanes_steps.append(0)
+                return None

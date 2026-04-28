@@ -573,6 +573,7 @@ def run_benchmark_env(
         n_ineq_list  = [m["n_ineq"]        for m in step_metrics if m["n_ineq"]        is not None]
         n_halfpl_list = [m["n_halfplanes"]        for m in step_metrics if m["n_halfplanes"]        is not None]
         n_infeasible = sum(1 for m in step_metrics if m.get("infeasible"))
+        n_warm_infeasible = sum(1 for m in step_metrics if m.get("warm_infeasible"))
         n_steps      = len(step_metrics)
 
         def _safe_stats(vals):
@@ -642,6 +643,7 @@ def run_benchmark_env(
             "iterations":     _safe_stats(iters),
             "n_steps":        n_steps,
             "n_infeasible":   n_infeasible,
+            "n_warm_infeasible": n_warm_infeasible,
             "infeasibility_rate": n_infeasible / n_steps if n_steps > 0 else None,
             # ── safety (clearance to obstacles) ──────────────────────────────
             "min_clearance":  _safe_stats(min_clears),
@@ -777,7 +779,7 @@ if __name__ == "__main__":
         envs_per_count = 10, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

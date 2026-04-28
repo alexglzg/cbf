@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("TkAgg")
 from matplotlib.patches import Polygon, Rectangle
 from scipy.spatial import ConvexHull, HalfspaceIntersection
 
@@ -353,14 +355,13 @@ class NmpcLseController:
         b_safe = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in firi_result.planes])
 
         self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=False)
-        self._opt_sol = self._optimizer.solve_nlp()
+        self._opt_sol = self._optimizer.solve_nlp(warm_start=True)
 
         if self._opt_sol is None:
             # Resolve with cold start instead of warm start
             self._optimizer.setup(self._param, system, local_trajectory, (A_safe, b_safe), robot_local_verts, cold_start=True)
-            self._opt_sol = self._optimizer.solve_nlp()
+            self._opt_sol = self._optimizer.solve_nlp(warm_start=False)
 
-        # TODO add safeguard for infeasible solution
         self._mpc_trajectory = []
         if self._opt_sol:
             for i in range(self._param.horizon):
@@ -380,7 +381,11 @@ class NmpcLseController:
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])
         else:
-            return np.zeros(2)
+            # Return previous solution but second input
+            sol = self._optimizer._prev_u[1]
+            self._optimizer._prev_x = None
+            self._optimizer._prev_u = None
+            return sol
 
     def collect_metrics(self, system, obstacles):
         """
@@ -400,6 +405,7 @@ class NmpcLseController:
             "kkt_time_s":    opt.kkt_times[-1]        if opt.kkt_times        else None,
             "iterations":    opt.iterations[-1]       if opt.iterations       else None,
             "infeasible":    opt.infeasible_steps[-1] if opt.infeasible_steps else None,
+            "warm_infeasible": opt.warm_infeasible_steps[-1] if opt.warm_infeasible_steps else None,
             "n_variables":   opt.n_variables_steps[-1] if hasattr(opt, 'n_variables_steps') and opt.n_variables_steps else None,
             "n_eq":          opt.n_eq_steps[-1]       if opt.n_eq_steps       else None,
             "n_ineq":        opt.n_ineq_steps[-1]     if opt.n_ineq_steps     else None,
