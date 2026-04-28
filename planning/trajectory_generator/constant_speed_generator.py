@@ -11,7 +11,7 @@ class ConstantSpeedTrajectoryGenerator:
         self._num_waypoint = None
         # local path
         self._reference_speed = 1.0 # .2
-        self._num_horizon = 20 # SHould be equal to the number of control steps in MPC controller
+        self._num_horizon = 30 # SHould be equal to the number of control steps in MPC controller
         self._local_path_timestep = 0.1
         self._local_trajectory = None
         self._proj_dist_buffer = 0.05 #0.05

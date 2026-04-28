@@ -375,8 +375,8 @@ class NmpcLseController:
             # bbox_tuple = (bbox[0][-1], bbox[1][-1], bbox[2][-1], bbox[3][-1])
             # print("bbox: ", bbox)
             # print("bbox_tupple: ", bbox_tuple)
-            # self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory))
-            self._visualize(seed_verts_list, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
+            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
+            # self._visualize(seed_verts_list, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
         
         if self._opt_sol:
             return self._opt_sol.value(self._optimizer.u[0])

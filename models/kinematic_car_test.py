@@ -464,7 +464,7 @@ def run_benchmark_env(
     # ── build robot geometry ──────────────────────────────────────────────
     geometry_regions = KinematicCarMultipleGeometry()
     if robot_shape == "rectangle":
-        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.6, 0.3, 0.1))
+        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.55, 0.25, 0.1))
     elif robot_shape == "pentagon":
         geometry_regions.add_geometry(
             KinematicCarTriangleGeometry(
@@ -774,8 +774,8 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 7,
-        max_obs     = 7,
+        min_obs     = 8,
+        max_obs     = 8,
         envs_per_count = 10, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],

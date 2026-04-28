@@ -18,6 +18,8 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import argparse
+import matplotlib
+matplotlib.use("TkAgg")
 
 
 def load_all_results(results_root: str) -> pd.DataFrame:
@@ -43,7 +45,7 @@ def load_all_results(results_root: str) -> pd.DataFrame:
         for json_file in obstacle_dir.glob("*.json"):
             try:
                 with open(json_file, "r") as f:
-                    payload = json.load(f)
+                   payload = json.load(f)
 
                 # Normalize: dict → single-element list
                 if isinstance(payload, dict):

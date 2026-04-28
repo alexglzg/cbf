@@ -8,16 +8,16 @@ from models.geometry_utils import *
 
 class NmpcDcbfOptimizerParam:
     def __init__(self):
-        self.horizon = 20
-        self.horizon_dcbf = 15
+        self.horizon = 30
+        self.horizon_dcbf = 20
         self.mat_Q = np.diag([2.0, 2.0, 1.0, 1.0])
         self.mat_R = np.diag([0.0, 0.0])
         self.mat_Rold = np.diag([1.0, 1.0]) * 0.0
         self.mat_dR = np.diag([1.0, 1.0]) * 0.0
-        self.gamma = 0.5
+        self.gamma = 0.8
         self.pomega = 10.0
         self.margin_dist = 0.1 # 0.1
-        self.terminal_weight = 10.0
+        self.terminal_weight = 2.0
 
 
 class NmpcDbcfOptimizer:
