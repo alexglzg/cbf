@@ -95,6 +95,9 @@ def extract_timing_data(results, file_names):
     # File:  env0_pipcbf
     # File:  env1_dcbf
     # File:  env1_pipcbf
+
+    kkt_time_lst = []
+    tot_time_lst = []
     
     # Loop over dcbf or pipcbf results
     for result, fname in zip(results, file_names):
@@ -110,6 +113,7 @@ def extract_timing_data(results, file_names):
         for step_data in result.get('steps', []):
             kkt_time = step_data.get('kkt_time_s')
             comp_time = step_data.get('comp_time_s')
+            infeasible = step_data.get('infeasible')
             
             if kkt_time is not None and comp_time is not None:
                 rows.append({
@@ -118,6 +122,22 @@ def extract_timing_data(results, file_names):
                     'kkt_time_ms': kkt_time * 1000,  # Convert to milliseconds
                     'total_time_ms': comp_time * 1000,  # Convert to milliseconds
                 })
+
+    # n1: index 33 = 19.457 secs (env0 somewhere a bug in multiplying by a 1000)
+    # {
+    #     "comp_time_s": 19.54844648,
+    #     "feval_time_s": 0.0005366139999999999,
+    #     "kkt_time_s": 19.547909865999998,
+    #     "iterations": 6,
+    #     "infeasible": false,
+    #     "n_variables": 278,
+    #     "n_eq": 0,
+    #     "n_ineq": 370,
+    #     "clearances": [
+    #       2.213999669408094
+    #     ],
+    #     "min_clearance": 2.213999669408094
+    #   },
     
     df = pd.DataFrame(rows)
     return df

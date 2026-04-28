@@ -253,7 +253,7 @@ class NmpcLseOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
+        option = {"fatrop.print_level": 5, "print_time": 1, "expand": True,
                   "fatrop.max_iter": 250, "fatrop.tol": 1e-4, "fatrop.mu_init": 1e-1,
                   "structure_detection": "auto", "debug": True}
         self.opti.solver("fatrop", option)
@@ -296,6 +296,9 @@ class NmpcLseOptimizer:
 
             self._prev_x = [opt_sol.value(xk) for xk in self.x]
             self._prev_u = [opt_sol.value(uk) for uk in self.u]
+
+            if sol_time > 10.0:
+                import pdb;pdb.set_trace()
 
             self.solver_times.append(sol_time)
             self.feval_times.append(t_feval)

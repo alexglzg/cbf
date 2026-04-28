@@ -34,6 +34,7 @@ class NmpcDbcfOptimizer:
         self.n_variables_steps = []  # variable count per step
         self.n_eq_steps       = []   # equality constraint count per step
         self.n_ineq_steps     = []   # inequality constraint count per step
+        self.n_halfplanes_steps = []   # number of halfplanes (rows of A) per trajectory
         # Stage-wise storage for Fatrop (block diagonal structure)
         self.x = []      # x_0, x_1, ..., x_N
         self.u = []      # u_0, u_1, ..., u_{N-1}
@@ -443,6 +444,7 @@ class NmpcDbcfOptimizer:
             self.n_variables_steps.append(self.nr_variables)
             self.n_eq_steps.append(n_eq)
             self.n_ineq_steps.append(n_ineq)
+            self.n_halfplanes_steps.append(0)
             print(f"solver time: {sol_time:.4f}s  iters: {iters}")
             return opt_sol
 

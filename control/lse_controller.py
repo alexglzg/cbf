@@ -368,7 +368,7 @@ class NmpcLseController:
             for i in range(self._param.horizon):
                 self._mpc_trajectory.append(self._opt_sol.value(self._optimizer.x[i])[0:2].tolist()) # Only extract positions
 
-        A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
+        # A_safe, b_safe = self._firi.compute(obs_verts_list, seed_poly, bbox)
         
         if self._enable_vis:
             # Convert bbox halfplanes to tuple format for visualization
