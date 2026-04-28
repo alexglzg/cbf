@@ -208,6 +208,10 @@ class FIRISolver:
             L = ell.L
             d = ell.d
 
+        if k == max_iter - 1:
+            print(k)
+            print("FIRI MAX ITER REACHED")
+
         ms = (time.perf_counter() - t0) * 1000.0
         
         # Remove redundant bounding box halfplanes

@@ -114,6 +114,7 @@ class MVIE2D:
                 try:
                     dx = np.linalg.solve(H, -g)
                 except np.linalg.LinAlgError:
+                    print("MVIE FAIL")
                     break
 
                 lambda_sq = -g.dot(dx)

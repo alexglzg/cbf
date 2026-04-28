@@ -25,14 +25,14 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         super().__init__()
 
         # --- Robot geometry ---
-        self.robot_length = 0.6
-        self.robot_width = 0.3
+        self.robot_length = 0.55
+        self.robot_width = 0.25
         self.footprint_offset_x = 0.0 #0.265 is for truck
 
         # --- Path-guided seeding ---
         self.seed_use_path = True
         self.seed_n_samples = 2
-        self.seed_lookahead = 1.0
+        self.seed_lookahead = 0.5
         # self.seed_path_timeout = 5.0  # seconds
 
         # --- Heading-aligned bounding box ---
@@ -170,7 +170,7 @@ class NmpcLseController:
             sdmn_seed=42,
             mvie_outer_iters=40,
             mvie_inner_iters=20,
-            mvie_mu=4.0,
+            mvie_mu=2.0,
         )
         self._optimizer = NmpcLseOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
         self._opt_sol = None
@@ -183,16 +183,16 @@ class NmpcLseController:
         # lp = self._param
         # now = self._now()
 
-        # # Try MPC trajectory first
-        # if self._mpc_trajectory is not None:
-        #     # age = now - self._mpc_traj_time
-        #     # if age < lp.seed_path_timeout:
-        #     print("MPC path sampling!")
-        #     pts = self._sample_first_n_from_path(
-        #         self._mpc_trajectory, system
-        #     )
-        #     if pts:
-        #         return pts, "mpc"
+        # Try MPC trajectory first
+        if self._mpc_trajectory is not None:
+            # age = now - self._mpc_traj_time
+            # if age < lp.seed_path_timeout:
+            print("MPC path sampling!")
+            pts = self._sample_first_n_from_path(
+                self._mpc_trajectory, system
+            )
+            if pts:
+                return pts, "mpc"
 
         if self._local_path is not None:
             print("Local path sampling!")
@@ -347,7 +347,7 @@ class NmpcLseController:
         # import pdb;pdb.set_trace()
         
         # Compute best ellipsoid, and polytope
-        firi_result = self.firi_solver.compute_from_halfplanes(obs_hps_list, seed_verts_list, bbox, max_iter=5, rho=0.02)
+        firi_result = self.firi_solver.compute_from_halfplanes(obs_hps_list, seed_verts_list, bbox, max_iter=20, rho=0.02)
         # firi_result = self.firi_solver.compute(vertex_obstacles, seed_verts_list, bbox, max_iter=5, rho=0.02, polytope_mode=True)
 
         # Get A and b from the FIRI result
