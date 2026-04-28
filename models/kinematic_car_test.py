@@ -442,20 +442,21 @@ def run_benchmark_env(
         env_data = _json.load(f)
     polytopes = env_data['halfplanes']
 
-    # GOAL_POSES = [
-    #         (11.9, 11.9),
-    #         (6.0, 11.9),
-    #         (0.0, 11.9),
-    #         (0.0, 6.0),
-    #         (0.0, 0.0),
-    #         (6.0, 0.0),
-    #         (11.9, 0.0),
-    #         (11.9, 6.0),
-    #     ]
-
     GOAL_POSES = [
-            (11.9, 11.9)
-    ]
+            (11.9, 11.9),
+            (6.0, 11.9),
+            (0.0, 11.9),
+            (0.0, 6.0),
+
+            (0.0, 0.0),
+            (6.0, 0.0),
+            (11.9, 0.0),
+            (11.9, 6.0),
+        ]
+
+    # GOAL_POSES = [
+    #         (11.9, 11.9)
+    # ]
 
     # Build grid and obstacles (does not change with start and goal position variation)
     start_pos, goal_pos, grid, obstacles = create_env_benchmark(
@@ -492,10 +493,10 @@ def run_benchmark_env(
 
     # Add loop over start and goal poses
     results = []
-    for i, goal_xy in enumerate(GOAL_POSES):
+    for i, goal_xy in enumerate(GOAL_POSES[0:int(len(GOAL_POSES)/2)]):
         print("="*60)
         print("Goal pos: ", goal_xy)
-        # start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
+        start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
 
         # start_pos = np.array([start_xy[0], start_xy[1], 0.0])
         start_pos = np.array([0.0, 0.0, 0.0])
@@ -725,7 +726,7 @@ def run_scalability_benchmark(
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
         # Standalone run
-        env_idx = 2
+        env_idx = 0
         fname = env_files[env_idx][1] # Filename
         env_path = os.path.join(env_folder, fname)
         for ctrl in controllers:
@@ -774,12 +775,12 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 9,
-        max_obs     = 9,
-        envs_per_count = 10, #10
+        min_obs     = 3,
+        max_obs     = 3,
+        envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = True,   # <── set True to re-enable live plots
+        controllers = ["dcbf", "pipcbf"], #["dcbf", "pipcbf"],
+        enable_vis  = False,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH

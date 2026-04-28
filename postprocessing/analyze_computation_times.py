@@ -566,7 +566,7 @@ def main():
     filename = "env2_pipcbf.json"
     result = find_results_by_filename(results, filename, 'results/n10/')
     data = extract_single_environment(result)
-    print(f"Infeasibilities in file {filename}: {data['infeasible']}")
+    # print(f"Infeasibilities in file {filename}: {data['infeasible']}")
     
     # Extract timing data
     df_timing, feas = extract_timing_data(results, file_names)
@@ -576,26 +576,26 @@ def main():
     print(f"PiPCBF feas: {feas['pipcbf']['feas']}")
     print(f"DCBF feas (%): {feas['pipcbf']['feas']/(feas['pipcbf']['feas'] + feas['pipcbf']['infeas']) * 100}")
     
-    # # Extract metrics data
-    # metrics = extract_metrics_data(results)
+    # Extract metrics data
+    metrics = extract_metrics_data(results)
     
-    # # Print tables
-    # print_timing_summary(df_timing)
-    # print_metrics_table(metrics)
+    # Print tables
+    print_timing_summary(df_timing)
+    print_metrics_table(metrics)
     
-    # # Create boxplots
-    # output = args.output
-    # if output is None and len(args.obstacle_count) > 0:
-    #     # Auto-generate output filename
-    #     output = f"timing_boxplot_{args.obstacle_count}.png"
+    # Create boxplots
+    output = args.output
+    if output is None and len(args.obstacle_count) > 0:
+        # Auto-generate output filename
+        output = f"timing_boxplot_{args.obstacle_count}.png"
 
-    # # save = False
-    # # if save:
-    # #     create_boxplots(df_timing, args.obstacle_count, output_path=output)
-    # # else:
-    # #     create_boxplots(df_timing, args.obstacle_count, output_path=None)
+    # save = False
+    # if save:
+    #     create_boxplots(df_timing, args.obstacle_count, output_path=output)
+    # else:
+    #     create_boxplots(df_timing, args.obstacle_count, output_path=None)
     
-    # print("Analysis complete!")
+    print("Analysis complete!")
 
 
 if __name__ == '__main__':

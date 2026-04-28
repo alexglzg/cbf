@@ -102,11 +102,12 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
     plt.xlabel("Number of obstacles")
     plt.ylabel("KKT time (ms)")
     plt.title("KKT computation time across obstacle counts")
+    plt.yscale("log")
     plt.tight_layout()
 
     if output_prefix:
         plt.savefig(f"{output_prefix}_kkt_violin.png", dpi=150)
-    plt.show()
+    plt.show(block = False)
 
     # --- Total computation time violin plot ---
     plt.figure(figsize=(14, 6))
@@ -121,6 +122,7 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
     plt.xlabel("Number of obstacles")
     plt.ylabel("Total computation time (ms)")
     plt.title("Total computation time across obstacle counts")
+    plt.yscale("log")
     plt.tight_layout()
 
     if output_prefix:
