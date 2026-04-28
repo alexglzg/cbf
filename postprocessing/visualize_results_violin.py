@@ -21,6 +21,24 @@ import argparse
 import matplotlib
 matplotlib.use("TkAgg")
 
+def latexify():
+    params = {'backend': 'TkAgg',
+              'axes.labelsize': 32, #26 for phd
+              'axes.titlesize': 32, #26 for phd
+              'legend.fontsize': 32, #26 for phd
+              'xtick.labelsize': 26,
+              'ytick.labelsize': 26,
+              'text.usetex': True,
+              'font.family': 'serif'
+              }
+
+    matplotlib.rcParams.update(params)
+
+latexify()
+
+color_reform = "#0072BD"
+color_decomp = [0.8800, 0.350, 0.0980]#"#D95319"
+custom_palette = {'dcbf': color_reform, 'pipcbf': color_decomp}
 
 def load_all_results(results_root: str) -> pd.DataFrame:
     """
@@ -65,7 +83,7 @@ def load_all_results(results_root: str) -> pd.DataFrame:
 
                         rows.append({
                             "obstacles": obstacle_label,
-                            "controller": controller,
+                            "Controller": controller,
                             "kkt_time_ms": kkt * 1000.0,
                             "total_time_ms": comp * 1000.0,
                         })
@@ -86,8 +104,8 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
         print("No data available for plotting.")
         return
 
-    sns.set_style("whitegrid")
-    sns.set_palette("Set2")
+    # sns.set_style("whitegrid")
+    # sns.set_palette("Set2")
 
     # --- KKT time violin plot ---
     plt.figure(figsize=(14, 6))
@@ -95,18 +113,22 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
         data=df,
         x="obstacles",
         y="kkt_time_ms",
-        hue="controller",
+        hue="Controller",
         split=True,
-        cut=0
+        gap = 0.05,
+        inner="quart",
+        palette=custom_palette,
+        # cut=0
     )
     plt.xlabel("Number of obstacles")
     plt.ylabel("KKT time (ms)")
-    plt.title("KKT computation time across obstacle counts")
+    # plt.title("KKT computation time across obstacle counts")
     plt.yscale("log")
     plt.tight_layout()
 
     if output_prefix:
         plt.savefig(f"{output_prefix}_kkt_violin.png", dpi=150)
+    plt.legend(loc='upper left')
     plt.show(block = False)
 
     # --- Total computation time violin plot ---
@@ -115,14 +137,18 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
         data=df,
         x="obstacles",
         y="total_time_ms",
-        hue="controller",
+        hue="Controller",
         split=True,
-        cut=0
+        palette=custom_palette,
+        inner="quart",
+        gap = 0.05,
+        # cut=0
     )
     plt.xlabel("Number of obstacles")
-    plt.ylabel("Total computation time (ms)")
-    plt.title("Total computation time across obstacle counts")
+    plt.ylabel("Wall time (ms)")
+    # plt.title("Total computation time across obstacle counts")
     plt.yscale("log")
+    plt.legend(loc='upper left')
     plt.tight_layout()
 
     if output_prefix:

@@ -779,7 +779,7 @@ if __name__ == "__main__":
         max_obs     = 3,
         envs_per_count = 1, #10
         robot_shape = "rectangle",
-        controllers = ["dcbf", "pipcbf"], #["dcbf", "pipcbf"],
+        controllers = ["dcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 

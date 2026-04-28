@@ -399,7 +399,7 @@ class NmpcDbcfOptimizer:
         for cost_name in self.costs:
             cost += self.costs[cost_name]
         self.opti.minimize(cost)
-        option = {"fatrop.print_level": 0, "print_time": 1, "expand": True,
+        option = {"fatrop.print_level": 5, "print_time": 1, "expand": True,
                   "fatrop.max_iter": 250, "fatrop.tol": 1e-4, "fatrop.mu_init": 1e-1,
                   "structure_detection": "auto", "debug": True}
         self.opti.solver("fatrop", option)
@@ -432,14 +432,18 @@ class NmpcDbcfOptimizer:
         try:
             opt_sol = self.opti.solve()
             stats   = opt_sol.stats()
+            fatrop_stats = stats.get('fatrop')
 
-            sd_time = stats['fatrop']['compute_sd_time']
+            sd_time = fatrop_stats['compute_sd_time']
             if sd_time >= 10.0:
-                # Seems to be bug in fatrop that it reports is very large
-                sol_time = stats.get('t_wall_total') - sd_time + sd_time / 1000
-                import pdb;pdb.set_trace()
+                # Seems to be bug in fatrop that it reports very large sd_time
+                sol_time = fatrop_stats.get('time_total') - sd_time + sd_time / 1000
             else:    
-                sol_time = stats.get('t_wall_total', float('nan'))
+                # bug in fatrop/casadi interface that it passes very high comp times through casadi
+                sol_time = fatrop_stats.get('time_total', float('nan'))
+
+            # if sol_time >= 5.0:
+            #     import pdb;pdb.set_trace()
             t_feval  = (stats.get('t_wall_nlp_f', 0.0)
                       + stats.get('t_wall_nlp_g', 0.0)
                       + stats.get('t_wall_nlp_grad_f', 0.0)
