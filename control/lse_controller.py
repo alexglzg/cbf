@@ -38,7 +38,7 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         # --- Heading-aligned bounding box ---
         self.bbox_ahead = 3.0
         self.bbox_behind = 1.0
-        self.bbox_side = 2.0
+        self.bbox_side = 1.0
 
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
@@ -168,8 +168,8 @@ class NmpcLseController:
         self._enable_vis = enable_vis and DEBUG_VIS
         self.firi_solver = FIRISolver(
             sdmn_seed=42,
-            mvie_outer_iters=20,
-            mvie_inner_iters=10,
+            mvie_outer_iters=40,
+            mvie_inner_iters=20,
             mvie_mu=4.0,
         )
         self._optimizer = NmpcLseOptimizer({}, {}, dynamics.forward_dynamics_opt(0.1))
