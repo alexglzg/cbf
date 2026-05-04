@@ -775,7 +775,7 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 1,
+        min_obs     = 5,
         max_obs     = 10,
         envs_per_count = 10, #10
         robot_shape = "rectangle",
