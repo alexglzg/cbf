@@ -189,13 +189,20 @@ class FIRISolver:
             else:
                 planes = self._rsi_points(
                     obstacles, seed_arr, L, d, bbox_planes)
-            best_planes = planes
+
+            normalized_planes = [
+                hp if hasattr(hp, "normal")
+                else HalfPlane(normal=hp[0], offset=hp[1])
+                for hp in planes
+            ]
+            best_planes = normalized_planes
 
             # ── MVIE ──────────────────────────────────────────────────
             # TODO: not necessary so remove
             m = len(planes)
-            A_mat = np.stack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in planes])   # (m, 2)
-            b_vec = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in planes])   # (m,)
+            
+            A_mat = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in normalized_planes])
+            b_vec = np.array([hp.offset for hp in normalized_planes])
 
             ell = self._mvie.solve(A_mat, b_vec, d)
             best_ellipsoid = ell
@@ -546,8 +553,10 @@ class FIRISolver:
         from scipy.spatial import ConvexHull, HalfspaceIntersection
         
         # try:
-        A_full = np.stack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in planes])
-        b_full = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in planes])
+        A_full = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in planes])
+        b_full = np.array([hp.offset for hp in planes])
+        # A_full = np.stack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in planes])
+        # b_full = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in planes])
         halfspaces = np.column_stack((A_full, -b_full))
         
         hs = HalfspaceIntersection(halfspaces, center)

@@ -99,6 +99,7 @@ def extract_timing_data(results, file_names):
     # File:  env1_pipcbf
 
     feas = {'dcbf': {'feas': 0, 'infeas': 0}, 'pipcbf': {'feas': 0, 'infeas': 0}}
+    max_halfplanes_in_run = 0
     
     # Loop over dcbf or pipcbf results
     for result, fname in zip(results, file_names):
@@ -115,6 +116,11 @@ def extract_timing_data(results, file_names):
             kkt_time = step_data.get('kkt_time_s')
             comp_time = step_data.get('comp_time_s')
             infeasible = step_data.get('infeasible')
+            if controller == 'pipcbf':
+                n_halfplanes = step_data.get('n_halfplanes')
+                if n_halfplanes is not None:
+                    max_halfplanes_in_run = max(max_halfplanes_in_run, n_halfplanes)
+
             if infeasible:
                 feas[controller]['infeas'] += 1
             else:
@@ -143,6 +149,12 @@ def extract_timing_data(results, file_names):
     #     ],
     #     "min_clearance": 2.213999669408094
     #   },
+
+    
+    print(
+        f"Max halfplanes in any step: "
+        f"{max_halfplanes_in_run}"
+    )
     
     df = pd.DataFrame(rows)
     return df, feas
@@ -191,14 +203,15 @@ def find_results_by_filename(results, filename, results_folder):
         )
 
     # ---- 2. Parse env_idx and controller from filename ----
-    match = re.match(r"env(\d+)_(.+)\.json", filename)
-    if match is None:
-        raise ValueError(f"Invalid filename format: {filename}")
+    basename = filename
+    match = re.match(r"env(\d+)_(.+)\.json", basename)
+
+    if not match:
+        raise ValueError(f"Cannot parse filename {basename}")
 
     env_idx = int(match.group(1))
     controller = match.group(2)
 
-    # ---- 3. Match against already-loaded results ----
     matches = [
         r for r in results
         if r.get("env_idx") == env_idx
@@ -206,17 +219,11 @@ def find_results_by_filename(results, filename, results_folder):
     ]
 
     if len(matches) == 0:
-        raise ValueError(
-            f"No loaded results match {filename} "
-            f"(env_idx={env_idx}, controller={controller})"
-        )
+        raise ValueError(f"No loaded results match {basename}")
 
-    if len(matches) > 1:
-        raise ValueError(
-            f"Multiple loaded results match {filename}"
-        )
+    # ✅ RETURN LIST (not a single dict)
+    return matches
 
-    return matches[0]
 
 
 def extract_single_environment(result):
@@ -355,6 +362,35 @@ def extract_metrics_data(results):
                 metrics['clearance'].append(clearances)
     
     return metrics_by_controller
+
+
+def report_max_halfplanes(results, obstacle_count):
+    """
+    Report the maximum number of halfplanes (inequality constraints)
+    over all environments, runs, and timesteps for a given obstacle count.
+    """
+    all_n_ineq = []
+
+    for result in results:
+        # Prefer top-level per-step array if present
+        n_ineq_steps = result.get('n_ineq_steps', [])
+        all_n_ineq.extend([v for v in n_ineq_steps if v is not None])
+
+        # Fallback to per-step data
+        if not n_ineq_steps:
+            for step in result.get('steps', []):
+                n_ineq = step.get('n_ineq')
+                if n_ineq is not None:
+                    all_n_ineq.append(n_ineq)
+
+    print("\n" + "=" * 80)
+    print(f"MAX NUMBER OF HALFPLANES (Obstacle count: {obstacle_count})")
+    print("=" * 80)
+
+    if all_n_ineq:
+        print(f"Max halfplanes over all environments and runs: {max(all_n_ineq)}")
+    else:
+        print("No inequality constraint data found.")
 
 
 def print_metrics_table(metrics_by_controller):
@@ -570,23 +606,28 @@ def main():
     
     print(f"Loaded {len(results)} result files\n")
 
-    # Load single environment
-    filename = "env1_dcbf.json"
-    result = find_results_by_filename(results, filename, 'results/n3/')
-    data = extract_single_environment(result)
-    # print(f"Infeasibilities in file {filename}: {data['infeasible']}")
-    print(f"Max comp time [ms]: {max(data['comp_times']), np.argmax(data['comp_times'])}")
+    # # Load single environment
+    # filename = "env1_dcbf.json"
+    # result = find_results_by_filename(results, filename, 'results/n3/')
+    # data = extract_single_environment(result)
+    # # print(f"Infeasibilities in file {filename}: {data['infeasible']}")
+    # print(f"Max comp time [ms]: {max(data['comp_times']), np.argmax(data['comp_times'])}")
     
     # Extract timing data
     df_timing, feas = extract_timing_data(results, file_names)
 
-    print(f"DCBF feas: {feas['dcbf']['feas']}")
-    print(f"DCBF feas (%): {feas['dcbf']['feas']/(feas['dcbf']['feas'] + feas['dcbf']['infeas']) * 100}")
-    print(f"PiPCBF feas: {feas['pipcbf']['feas']}")
-    print(f"DCBF feas (%): {feas['pipcbf']['feas']/(feas['pipcbf']['feas'] + feas['pipcbf']['infeas']) * 100}")
-    7
+    # print(f"DCBF feas: {feas['dcbf']['feas']}")
+    # print(f"DCBF feas (%): {feas['dcbf']['feas']/(feas['dcbf']['feas'] + feas['dcbf']['infeas']) * 100}")
+    # print(f"PiPCBF feas: {feas['pipcbf']['feas']}")
+    # print(f"DCBF feas (%): {feas['pipcbf']['feas']/(feas['pipcbf']['feas'] + feas['pipcbf']['infeas']) * 100}")
+    
     # Extract metrics data
     metrics = extract_metrics_data(results)
+
+    
+    # Report max halfplanes
+    report_max_halfplanes(results, args.obstacle_count)
+
     
     # Print tables
     print_timing_summary(df_timing)
