@@ -344,10 +344,9 @@ class NmpcLseController:
         #     [0, 1, bbox_y_max]       # y <= y_max
         # ]
 
-        # import pdb;pdb.set_trace()
-        
         # Compute best ellipsoid, and polytope
         firi_result = self.firi_solver.compute_from_halfplanes(obs_hps_list, seed_verts_list, bbox, max_iter=20, rho=0.02)
+        
         # firi_result = self.firi_solver.compute(vertex_obstacles, seed_verts_list, bbox, max_iter=5, rho=0.02, polytope_mode=True)
 
         # Get A and b from the FIRI result

@@ -169,7 +169,8 @@ class FIRISolver:
 
         # ── Initialise ellipsoid strictly inside seed [Paper §III-B] ──
         seed_arr = [np.asarray(v, dtype=float).flatten() for v in seed_vertices]
-        d = np.mean(seed_arr, axis=0)
+        seed_centroid = np.mean(seed_arr, axis=0)
+        d = seed_centroid.copy()
         r_init = self._inscribed_radius(seed_arr, d)
         r_init = max(r_init * 0.8, 1e-4)
         L = r_init * np.eye(2)
@@ -178,6 +179,7 @@ class FIRISolver:
         best_planes = list(bbox_planes)
         best_ellipsoid: Optional[Ellipsoid] = None
         iters = 0
+        n_bbox = len(bbox_planes)
 
         for k in range(max_iter):
             iters = k + 1
@@ -192,15 +194,15 @@ class FIRISolver:
 
             normalized_planes = [
                 hp if hasattr(hp, "normal")
-                else HalfPlane(normal=hp[0], offset=hp[1])
+                else HalfPlane(normal=np.asarray(hp[0:2], dtype=float), offset=float(hp[2]))
                 for hp in planes
             ]
+
             best_planes = normalized_planes
 
             # ── MVIE ──────────────────────────────────────────────────
-            # TODO: not necessary so remove
             m = len(planes)
-            
+
             A_mat = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in normalized_planes])
             b_vec = np.array([hp.offset for hp in normalized_planes])
 
@@ -213,7 +215,14 @@ class FIRISolver:
 
             prev_vol = new_vol
             L = ell.L
-            d = ell.d
+            # Only move the ellipsoid centre when obstacle halfplanes are
+            # constraining it.  If no obstacles were found (e.g. k=0 with the
+            # tiny initial L), keeping d at the seed centroid prevents the
+            # MVIE from drifting into an obstacle — which would make its
+            # vertices surround d in k=1, causing SDMN to be permanently
+            # infeasible for that obstacle.
+            if len(normalized_planes) > n_bbox:
+                d = ell.d
 
         if k == max_iter - 1:
             print(k)

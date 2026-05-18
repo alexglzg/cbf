@@ -265,6 +265,8 @@ class NmpcDcbfController:
         self._ax.clear()
 
         # ✅ FIXED GLOBAL ENVIRONMENT LIMITS
+        # self._ax.set_xlim(*self._env_xlim)
+        # self._ax.set_ylim(*self._env_ylim)
         self._ax.set_xlim(*self._env_xlim)
         self._ax.set_ylim(*self._env_ylim)
         self._ax.set_aspect('equal', adjustable='box')
@@ -322,7 +324,7 @@ class NmpcDcbfController:
         #         self._ax.add_patch(Polygon(verts, color='green', alpha=0.3, label='FIRI Region'))
         #     except: pass
             
-        self._ax.set_title("DCBF Controller")
+        # self._ax.set_title("DCBF Controller")
         # plt.pause(0.001)
 
         # Save every 10 frames instead of pausing every 0.001s
@@ -334,6 +336,9 @@ class NmpcDcbfController:
 
         # self._plot_counter += 1
 
+        # import pdb;pdb.set_trace()
+        self._ax.axis('off')
+        plt.savefig('benchmark_env.png', transparent=True)
         # Non-blocking draw without the 0.001s sleep
         self._fig.canvas.draw_idle()
         self._fig.canvas.flush_events()
