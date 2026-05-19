@@ -465,7 +465,7 @@ def run_benchmark_env(
     # ── build robot geometry ──────────────────────────────────────────────
     geometry_regions = KinematicCarMultipleGeometry()
     if robot_shape == "rectangle":
-        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.55, 0.25, 0.1))
+        geometry_regions.add_geometry(KinematicCarRectangleGeometry(0.55, 0.25, 0.0)) #last:0.1
     elif robot_shape == "pentagon":
         geometry_regions.add_geometry(
             KinematicCarTriangleGeometry(
@@ -498,10 +498,10 @@ def run_benchmark_env(
         print("Goal pos: ", goal_xy)
         start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
 
-        # start_pos = np.array([start_xy[0], start_xy[1], 0.0])
-        start_pos = np.array([11.9, 6.0, 0.0])
+        start_pos = np.array([start_xy[0], start_xy[1], 0.0])
+        # start_pos = np.array([11.9, 6.0, 0.0])
         goal_pos = np.array([goal_xy[0], goal_xy[1]])
-        goal_pos = np.array([0.0, 6.0])
+        # goal_pos = np.array([0.0, 6.0])
 
         robot = Robot(
             KinematicCarSystem(
@@ -513,7 +513,7 @@ def run_benchmark_env(
         )
 
         robot.set_global_planner(
-            AstarLoSPathGenerator(grid, quad=False, margin=0.05))
+            AstarLoSPathGenerator(grid, quad=False, margin=0.05)) #margin=0.05
         robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
 
         opt_param = NmpcDcbfOptimizerParam()
@@ -727,7 +727,7 @@ def run_scalability_benchmark(
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
         # # Standalone run
-        # env_idx = 3
+        # env_idx = 1
         # fname = env_files[env_idx][1] # Filename
         # env_path = os.path.join(env_folder, fname)
         # for ctrl in controllers:
@@ -780,7 +780,7 @@ if __name__ == "__main__":
         max_obs     = 4,
         envs_per_count = 10, #10
         robot_shape = "rectangle",
-        controllers = ["dcbf", "pipcbf"], #["dcbf", "pipcbf"],
+        controllers = ["pipcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 

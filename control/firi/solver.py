@@ -169,8 +169,9 @@ class FIRISolver:
 
         # ── Initialise ellipsoid strictly inside seed [Paper §III-B] ──
         seed_arr = [np.asarray(v, dtype=float).flatten() for v in seed_vertices]
-        seed_centroid = np.mean(seed_arr, axis=0)
-        d = seed_centroid.copy()
+        # seed_centroid = np.mean(seed_arr, axis=0)
+        # d = seed_centroid.copy()
+        d = np.mean(seed_arr, axis=0)
         r_init = self._inscribed_radius(seed_arr, d)
         r_init = max(r_init * 0.8, 1e-4)
         L = r_init * np.eye(2)
@@ -215,14 +216,15 @@ class FIRISolver:
 
             prev_vol = new_vol
             L = ell.L
-            # Only move the ellipsoid centre when obstacle halfplanes are
-            # constraining it.  If no obstacles were found (e.g. k=0 with the
-            # tiny initial L), keeping d at the seed centroid prevents the
-            # MVIE from drifting into an obstacle — which would make its
-            # vertices surround d in k=1, causing SDMN to be permanently
-            # infeasible for that obstacle.
-            if len(normalized_planes) > n_bbox:
-                d = ell.d
+            d = ell.d
+            # # Only move the ellipsoid centre when obstacle halfplanes are
+            # # constraining it.  If no obstacles were found (e.g. k=0 with the
+            # # tiny initial L), keeping d at the seed centroid prevents the
+            # # MVIE from drifting into an obstacle — which would make its
+            # # vertices surround d in k=1, causing SDMN to be permanently
+            # # infeasible for that obstacle.
+            # if len(normalized_planes) > n_bbox:
+            #     d = ell.d
 
         if k == max_iter - 1:
             print(k)

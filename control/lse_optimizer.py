@@ -175,6 +175,7 @@ class NmpcLseOptimizer:
 
     def add_prev_input_cost(self, param):
         """Penalize deviation from previous input - only first stage."""
+        self.costs["prev_input"] = 0
         if len(self.u) > 0:
             u_0 = self.u[0]
             self.costs["prev_input"] = ca.mtimes(

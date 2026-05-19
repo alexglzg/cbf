@@ -36,10 +36,10 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         # self.seed_path_timeout = 5.0  # seconds
 
         # --- Heading-aligned bounding box ---
-        self.bbox_ahead = 3.0
+        self.bbox_ahead = 4.0
         self.bbox_behind = 1.0
-        self.bbox_side = 1.0
-
+        self.bbox_side = 1.5
+        
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
 def _closest_point_on_convex_poly(point: np.ndarray, verts: np.ndarray) -> np.ndarray:
