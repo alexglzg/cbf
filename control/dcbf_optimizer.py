@@ -11,7 +11,7 @@ class NmpcDcbfOptimizerParam:
         self.horizon = 30
         self.horizon_dcbf = 20
         self.mat_Q = np.diag([2.0, 2.0, 1.0, 1.0])
-        self.mat_R = np.diag([0.0, 0.0])
+        self.mat_R = np.diag([0.1, 0.1])
         self.mat_Rold = np.diag([1.0, 1.0]) * 0.0
         self.mat_dR = np.diag([1.0, 1.0]) * 0.0
         self.gamma = 0.8
