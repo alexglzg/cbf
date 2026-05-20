@@ -187,10 +187,10 @@ class FIRISolver:
 
             # ── RsI step ──────────────────────────────────────────────
             if polytope_mode:
-                planes = self._rsi_polytopes(
+                planes, obstacle_planes_added = self._rsi_polytopes(
                     obstacles, seed_arr, L, d, bbox_planes)
             else:
-                planes = self._rsi_points(
+                planes, obstacle_planes_added = self._rsi_points(
                     obstacles, seed_arr, L, d, bbox_planes)
 
             normalized_planes = [
@@ -202,8 +202,6 @@ class FIRISolver:
             best_planes = normalized_planes
 
             # ── MVIE ──────────────────────────────────────────────────
-            m = len(planes)
-
             A_mat = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in normalized_planes])
             b_vec = np.array([hp.offset for hp in normalized_planes])
 
@@ -216,15 +214,12 @@ class FIRISolver:
 
             prev_vol = new_vol
             L = ell.L
-            d = ell.d
-            # # Only move the ellipsoid centre when obstacle halfplanes are
-            # # constraining it.  If no obstacles were found (e.g. k=0 with the
-            # # tiny initial L), keeping d at the seed centroid prevents the
-            # # MVIE from drifting into an obstacle — which would make its
-            # # vertices surround d in k=1, causing SDMN to be permanently
-            # # infeasible for that obstacle.
-            # if len(normalized_planes) > n_bbox:
-            #     d = ell.d
+            # Only advance the centre when obstacle halfplanes were found.
+            # Without them MVIE maximises volume within the bbox alone and
+            # can drift d into an obstacle, making SDMN infeasible on the
+            # next iteration and leaving the polytope at full bbox extent.
+            if obstacle_planes_added:
+                d = ell.d
 
         if k == max_iter - 1:
             print(k)
@@ -341,10 +336,12 @@ class FIRISolver:
         L           : np.ndarray,
         d           : np.ndarray,
         bbox_planes : List[HalfPlane],
-    ) -> List[HalfPlane]:
+    ) -> Tuple[List[HalfPlane], bool]:
         """
         RsI for point-cloud obstacles.
         One SDMN call per obstacle point. [Paper Alg. 1, Lines 10-11]
+
+        Returns (planes, obstacle_planes_added).
         """
         L_inv   = np.linalg.inv(L)
         L_inv_T = L_inv.T
@@ -385,13 +382,15 @@ class FIRISolver:
         L           : np.ndarray,
         d           : np.ndarray,
         bbox_planes : List[HalfPlane],
-    ) -> List[HalfPlane]:
+    ) -> Tuple[List[HalfPlane], bool]:
         """
         RsI for polytope obstacles (firi_polytope_node style).
 
         One SDMN call per polytope — all vertices of the polytope must
         be excluded (one constraint per vertex, plus seed constraints).
         This matches the per-obstacle QP in firi_polytope_node.cpp.
+
+        Returns (planes, obstacle_planes_added).
         """
         L_inv   = np.linalg.inv(L)
         L_inv_T = L_inv.T
@@ -442,8 +441,6 @@ class FIRISolver:
                     a = res.y / b_sq
                     candidates.append((res.y, a, np.linalg.norm(a), i))
 
-        # import pdb;pdb.set_trace()
-
         # For greedy selection we need flat "obs_bar" (one entry per polytope,
         # using all vertices to test separation).
         return self._greedy_select_polytopes(
@@ -458,16 +455,19 @@ class FIRISolver:
         L_inv_T     : np.ndarray,
         d           : np.ndarray,
         bbox_planes : List[HalfPlane],
-    ) -> List[HalfPlane]:
+    ) -> Tuple[List[HalfPlane], bool]:
         """
         Greedy selection sorted by ||a|| ascending (closest first).
         [Paper Alg. 1, Lines 12-16]
+
+        Returns (planes, obstacle_planes_added).
         """
         # Sort by a_norm ascending (closest halfplane first)
         candidates.sort(key=lambda c: c[2])
 
         separated = [False] * len(obs_bar)
         result_planes = list(bbox_planes)
+        obstacle_planes_added = False
 
         for b_sol, a, a_norm, obs_idx in candidates:
             if separated[obs_idx]:
@@ -484,6 +484,7 @@ class FIRISolver:
 
             result_planes.append(
                 HalfPlane(normal=n_orig / n_len, offset=d_orig / n_len))
+            obstacle_planes_added = True
 
             # Mark all obstacles separated by this plane
             for j, u_bar in enumerate(obs_bar):
@@ -493,7 +494,7 @@ class FIRISolver:
             if len(result_planes) > 50:   # safety cap
                 break
 
-        return result_planes
+        return result_planes, obstacle_planes_added
 
     # ── Greedy halfplane selection (polytopes) ────────────────────────
 
@@ -504,16 +505,19 @@ class FIRISolver:
         L_inv_T     : np.ndarray,
         d           : np.ndarray,
         bbox_planes : List[HalfPlane],
-    ) -> List[HalfPlane]:
+    ) -> Tuple[List[HalfPlane], bool]:
         """
         Greedy selection for polytope obstacles.
         A polytope is "separated" iff ALL its transformed vertices
         satisfy b_sol^T v_bar ≥ 1.  (Matches firi_polytope_node logic.)
+
+        Returns (planes, obstacle_planes_added).
         """
         candidates.sort(key=lambda c: c[2])
 
         separated = [False] * len(poly_bars)
         result_planes = list(bbox_planes)
+        obstacle_planes_added = False
 
         for b_sol, a, a_norm, poly_idx in candidates:
             if separated[poly_idx]:
@@ -527,6 +531,7 @@ class FIRISolver:
 
             result_planes.append(
                 HalfPlane(normal=n_orig / n_len, offset=d_orig / n_len))
+            obstacle_planes_added = True
 
             # A polytope is separated iff ALL its vertices are excluded
             for j, verts_bar in enumerate(poly_bars):
@@ -537,7 +542,7 @@ class FIRISolver:
             if len(result_planes) > 50:
                 break
 
-        return result_planes
+        return result_planes, obstacle_planes_added
 
     # ── Helpers ───────────────────────────────────────────────────────
 

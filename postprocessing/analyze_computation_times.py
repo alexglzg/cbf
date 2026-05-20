@@ -10,6 +10,7 @@ Usage:
 """
 
 import json
+import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -73,6 +74,18 @@ def load_results(obstacle_count_dir):
 
 
 
+def _is_nan_infeasible_step(step_data):
+    """Return True if this step has NaN timing and 0 iterations (solver returned no solution)."""
+    kkt_time = step_data.get('kkt_time_s')
+    comp_time = step_data.get('comp_time_s')
+    iters = step_data.get('iterations')
+    nan_timing = (
+        (kkt_time is not None and math.isnan(kkt_time)) or
+        (comp_time is not None and math.isnan(comp_time))
+    )
+    return nan_timing and iters == 0
+
+
 def extract_timing_data(results, file_names):
     """
     Extract computation times from all results.
@@ -100,17 +113,18 @@ def extract_timing_data(results, file_names):
 
     feas = {'dcbf': {'feas': 0, 'infeas': 0}, 'pipcbf': {'feas': 0, 'infeas': 0}}
     max_halfplanes_in_run = 0
-    
+    nan_infeasible_count = {'dcbf': 0, 'pipcbf': 0}
+
     # Loop over dcbf or pipcbf results
     for result, fname in zip(results, file_names):
         controller = result.get('controller', 'unknown')
         assert controller in ('dcbf', 'pipcbf'), \
         f"{fname}: unexpected or missing controller field '{controller}'"
-        
+
         # Extract KKT times (per-step)
         kkt_stats = result.get('kkt_time_s', {})
         kkt_times = result.get('steps', [])
-        
+
         # Extract individual per-step times
         for step_data in result.get('steps', []):
             kkt_time = step_data.get('kkt_time_s')
@@ -121,11 +135,15 @@ def extract_timing_data(results, file_names):
                 if n_halfplanes is not None:
                     max_halfplanes_in_run = max(max_halfplanes_in_run, n_halfplanes)
 
+            if _is_nan_infeasible_step(step_data):
+                nan_infeasible_count[controller] += 1
+                continue
+
             if infeasible:
                 feas[controller]['infeas'] += 1
             else:
                 feas[controller]['feas'] += 1
-            
+
             if kkt_time is not None and comp_time is not None:
                 rows.append({
                     'environment': fname,
@@ -157,7 +175,7 @@ def extract_timing_data(results, file_names):
     )
     
     df = pd.DataFrame(rows)
-    return df, feas
+    return df, feas, nan_infeasible_count
 
 
 
@@ -342,18 +360,24 @@ def extract_metrics_data(results):
         # If top-level arrays are empty, fall back to per-step data
         if not n_eq_steps:
             for step_data in result.get('steps', []):
+                if _is_nan_infeasible_step(step_data):
+                    continue
                 n_eq = step_data.get('n_eq')
                 if n_eq is not None:
                     metrics['n_eq'].append(n_eq)
-        
+
         if not n_ineq_steps:
             for step_data in result.get('steps', []):
+                if _is_nan_infeasible_step(step_data):
+                    continue
                 n_ineq = step_data.get('n_ineq')
                 if n_ineq is not None:
                     metrics['n_ineq'].append(n_ineq)
         
-        # Per-step iterations
+        # Per-step iterations (skip NaN-infeasible steps)
         for step_data in result.get('steps', []):
+            if _is_nan_infeasible_step(step_data):
+                continue
             iters = step_data.get('iterations')
             clearances = step_data.get('min_clearance')
             if iters is not None:
@@ -614,7 +638,10 @@ def main():
     # print(f"Max comp time [ms]: {max(data['comp_times']), np.argmax(data['comp_times'])}")
     
     # Extract timing data
-    df_timing, feas = extract_timing_data(results, file_names)
+    df_timing, feas, nan_infeasible_count = extract_timing_data(results, file_names)
+    total_infeasible = sum(nan_infeasible_count.values())
+    per_ctrl = ", ".join(f"{c}={n}" for c, n in sorted(nan_infeasible_count.items()) if n > 0)
+    print(f"Infeasible trajectories removed (NaN timing, 0 iterations): {total_infeasible}" + (f" ({per_ctrl})" if per_ctrl else ""))
 
     # print(f"DCBF feas: {feas['dcbf']['feas']}")
     # print(f"DCBF feas (%): {feas['dcbf']['feas']/(feas['dcbf']['feas'] + feas['dcbf']['infeas']) * 100}")
