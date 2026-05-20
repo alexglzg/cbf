@@ -499,9 +499,23 @@ def run_benchmark_env(
         start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
 
         start_pos = np.array([start_xy[0], start_xy[1], 0.0])
-        # start_pos = np.array([11.9, 6.0, 0.0])
+        # start_pos = np.array([6.0, 0.0, 0.0])
         goal_pos = np.array([goal_xy[0], goal_xy[1]])
-        # goal_pos = np.array([0.0, 6.0])
+        # goal_pos = np.array([6.0, 11.9])
+
+
+        # Assuming start_pose = np.array([x, y, theta])
+        dx = goal_pos[0] - start_pos[0]
+        dy = goal_pos[1] - start_pos[1]
+
+        heading = np.arctan2(dy, dx)
+
+        # Adjust if exactly pi
+        if np.isclose(heading, np.pi):
+            heading = np.pi / 1.01
+
+        start_pos[2] = heading
+
 
         robot = Robot(
             KinematicCarSystem(
@@ -513,7 +527,7 @@ def run_benchmark_env(
         )
 
         robot.set_global_planner(
-            AstarLoSPathGenerator(grid, quad=False, margin=0.05)) #margin=0.05
+            AstarLoSPathGenerator(grid, quad=False, margin=0.10)) #margin=0.05
         robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
 
         opt_param = NmpcDcbfOptimizerParam()
@@ -725,9 +739,9 @@ def run_scalability_benchmark(
             print(f"  [n={n_obs}] No env files found, skipping.")
             continue
 
-        print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
-        # # Standalone run
-        # env_idx = 1
+        # print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
+        # # # Standalone run
+        # env_idx = 5
         # fname = env_files[env_idx][1] # Filename
         # env_path = os.path.join(env_folder, fname)
         # for ctrl in controllers:
@@ -781,7 +795,7 @@ if __name__ == "__main__":
         envs_per_count = 10, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = False,   # <── set True to re-enable live plots
+        enable_vis  = True,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH
