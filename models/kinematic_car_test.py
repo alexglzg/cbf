@@ -739,45 +739,45 @@ def run_scalability_benchmark(
             print(f"  [n={n_obs}] No env files found, skipping.")
             continue
 
-        # print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
-        # # # Standalone run
-        # env_idx = 5
-        # fname = env_files[env_idx][1] # Filename
-        # env_path = os.path.join(env_folder, fname)
-        # for ctrl in controllers:
-        #     print(f"  Running env{env_idx}  controller={ctrl} …")
-        #     try:
-        #         run_benchmark_env(
-        #             env_json_path=env_path,
-        #             n_obs=n_obs,
-        #             env_idx=env_idx,
-        #             robot_shape=robot_shape,
-        #             controller_type=ctrl,
-        #             enable_vis=enable_vis,
-        #         )
-        #     except Exception as e:
-        #         import traceback
-        #         print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
-        #         print(traceback.print_exc())
+        print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
+        # # Standalone run
+        env_idx = 0
+        fname = env_files[env_idx][1] # Filename
+        env_path = os.path.join(env_folder, fname)
+        for ctrl in controllers:
+            print(f"  Running env{env_idx}  controller={ctrl} …")
+            try:
+                run_benchmark_env(
+                    env_json_path=env_path,
+                    n_obs=n_obs,
+                    env_idx=env_idx,
+                    robot_shape=robot_shape,
+                    controller_type=ctrl,
+                    enable_vis=enable_vis,
+                )
+            except Exception as e:
+                import traceback
+                print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+                print(traceback.print_exc())
 
-        # Full benchmark
-        for env_idx, fname in env_files:
-            env_path = os.path.join(env_folder, fname)
-            for ctrl in controllers:
-                print(f"  Running env{env_idx}  controller={ctrl} …")
-                try:
-                    run_benchmark_env(
-                        env_json_path=env_path,
-                        n_obs=n_obs,
-                        env_idx=env_idx,
-                        robot_shape=robot_shape,
-                        controller_type=ctrl,
-                        enable_vis=enable_vis,
-                    )
-                except Exception as e:
-                    import traceback
-                    print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
-                    print(traceback.print_exc())
+        # # Full benchmark
+        # for env_idx, fname in env_files:
+        #     env_path = os.path.join(env_folder, fname)
+        #     for ctrl in controllers:
+        #         print(f"  Running env{env_idx}  controller={ctrl} …")
+        #         try:
+        #             run_benchmark_env(
+        #                 env_json_path=env_path,
+        #                 n_obs=n_obs,
+        #                 env_idx=env_idx,
+        #                 robot_shape=robot_shape,
+        #                 controller_type=ctrl,
+        #                 enable_vis=enable_vis,
+        #             )
+        #         except Exception as e:
+        #             import traceback
+        #             print(f"  [ERROR] env{env_idx} {ctrl}: {e}")
+        #             print(traceback.print_exc())
 
 
 if __name__ == "__main__":
