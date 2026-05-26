@@ -390,8 +390,8 @@ import statistics as _st
 # ── folder conventions (mirror claude_polytope_env.py) ────────────────────────
 #   environments : ./envs/n{N}/env{I}.json
 #   results      : ./results/n{N}/env{I}_{controller}.json
-# ENVS_ROOT    = "/home/mecorin/Documents/embeddedcbf/benchmark/envs"
-ENVS_ROOT = "/home/u0110021/git_repos/embeddedcbf/benchmark/envs"
+ENVS_ROOT    = "/home/mecorin/Documents/embeddedcbf/benchmark/envs"
+# ENVS_ROOT = "/home/u0110021/git_repos/embeddedcbf/benchmark/envs"
 RESULTS_ROOT = "./results"
 
 
@@ -527,7 +527,7 @@ def run_benchmark_env(
         )
 
         robot.set_global_planner(
-            AstarLoSPathGenerator(grid, quad=False, margin=0.10)) #margin=0.05
+            AstarLoSPathGenerator(grid, quad=False, margin=0.15)) #margin=0.05
         robot.set_local_planner(ConstantSpeedTrajectoryGenerator())
 
         opt_param = NmpcDcbfOptimizerParam()
@@ -741,7 +741,7 @@ def run_scalability_benchmark(
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
         # # Standalone run
-        env_idx = 4
+        env_idx = 0
         fname = env_files[env_idx][1] # Filename
         env_path = os.path.join(env_folder, fname)
         for ctrl in controllers:
