@@ -5,7 +5,7 @@ class ConstantSpeedTrajectoryGenerator:
     def __init__(self):
         self._global_path_index = 0
         self._num_waypoint = None
-        self._reference_speed = 0.75
+        self._reference_speed = 1.0 #0.75
         self._num_horizon = 30
         self._local_path_timestep = 0.1
         self._local_trajectory = None

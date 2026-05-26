@@ -498,10 +498,10 @@ def run_benchmark_env(
         print("Goal pos: ", goal_xy)
         start_xy = GOAL_POSES[(i + len(GOAL_POSES) // 2) % len(GOAL_POSES)]
 
-        # start_pos = np.array([start_xy[0], start_xy[1], 0.0])
-        start_pos = np.array([11.9, 6.0, 0.0])
-        # goal_pos = np.array([goal_xy[0], goal_xy[1]])
-        goal_pos = np.array([0.0, 6.0])
+        start_pos = np.array([start_xy[0], start_xy[1], 0.0])
+        # start_pos = np.array([11.9, 6.0, 0.0])
+        goal_pos = np.array([goal_xy[0], goal_xy[1]])
+        # goal_pos = np.array([0.0, 6.0])
 
 
         # Assuming start_pose = np.array([x, y, theta])
@@ -741,7 +741,7 @@ def run_scalability_benchmark(
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
         # # Standalone run
-        env_idx = 0
+        env_idx = 8
         fname = env_files[env_idx][1] # Filename
         env_path = os.path.join(env_folder, fname)
         for ctrl in controllers:
@@ -795,7 +795,7 @@ if __name__ == "__main__":
         envs_per_count = 10, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],
-        enable_vis  = True,   # <── set True to re-enable live plots
+        enable_vis  = False,   # <── set True to re-enable live plots
     )
 
 # export PYTHONPATH=$PWD:$PYTHONPATH
