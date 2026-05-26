@@ -54,8 +54,11 @@ class HalfPlane:
 
     def contains(self, p: np.ndarray) -> bool:
         """True iff *p* satisfies this halfplane (with small tolerance)."""
-        # return float(self.normal.dot(p)) <= self.offset + 1e-9
-        return -1e-6 <= float(self.normal.dot(p)) - self.offset <= 1e-6
+        return float(self.normal.dot(p)) <= self.offset + 1e-9
+
+    def is_active(self, p: np.ndarray, tol: float = 1e-4) -> bool:
+        """True iff *p* lies on the boundary of this halfplane within *tol*."""
+        return abs(float(self.normal.dot(p)) - self.offset) <= tol
 
     def point_on_plane(self) -> np.ndarray:
         """A point lying on the boundary hyperplane."""
@@ -226,10 +229,15 @@ class FIRISolver:
             print("FIRI MAX ITER REACHED")
 
         ms = (time.perf_counter() - t0) * 1000.0
-        
-        # Remove redundant bounding box halfplanes
-        best_planes = self._remove_redundant_planes(best_planes, d)
-        
+
+        # Remove redundant bounding box halfplanes (never remove obstacle planes)
+        best_planes = self._remove_redundant_planes(best_planes, d, n_bbox=n_bbox)
+
+        # TODO: post-hoc obstacle exclusion check disabled — the bisector
+        # plane can cut through the seed and over-constrain the polytope.
+        # best_planes = self._verify_obstacle_exclusion(
+        #     best_planes, obstacles, seed_arr, polytope_mode)
+
         return FIRIResult(
             planes=best_planes,
             ellipsoid=best_ellipsoid,
@@ -271,34 +279,6 @@ class FIRISolver:
             polytope_mode= True,          # always polytope mode
         )
     
-    def _halfplanes_to_verts(self, halfplanes: list) -> list:
-        """
-        Convert an obstacle from H-representation to V-representation.
-
-        Each halfplane is either:
-        • a HalfPlane object  (normal, offset)
-        • a tuple/list        (normal_array, offset_float)
-
-        Returns a list of np.ndarray vertices (CCW), or [] if degenerate.
-        """
-        CLIP = 1e3  # bounding box for unbounded polytopes
-        poly = [
-            np.array([-CLIP, -CLIP]),
-            np.array([ CLIP, -CLIP]),
-            np.array([ CLIP,  CLIP]),
-            np.array([-CLIP,  CLIP]),
-        ]
-        for hp in halfplanes:
-            # Accept both HalfPlane objects and raw (n, d) tuples
-            if hasattr(hp, 'normal'):
-                n, d = hp.normal, hp.offset
-            else:
-                n, d = np.asarray(hp[0:2]), float(hp[2])
-            poly = _clip_halfplane(poly, n, d)
-            if not poly:
-                return []
-        return poly   # list of np.ndarray of all vertices of polytope
-
     def _halfplanes_to_verts(self, halfplanes: list) -> list:
         """
         Convert an obstacle from H-representation to V-representation.
@@ -424,9 +404,8 @@ class FIRISolver:
         candidates = []  # (b_sol, a, a_norm, poly_idx)
 
         for i, verts_bar in enumerate(poly_bars):
-            # Distance filter: skip if all vertices are far from unit ball
             min_dist_sq = min(v.dot(v) for v in verts_bar)
-            if min_dist_sq > 25.0:  # > 4 normalised units away
+            if min_dist_sq > 100.0:
                 continue
 
             # One SDMN call that excludes ALL vertices of this polytope.
@@ -547,55 +526,92 @@ class FIRISolver:
     # ── Helpers ───────────────────────────────────────────────────────
 
     def _halfplane_contains_point(self, point: List, halfplane: List):
-        """True iff *p* satisfies this halfplane (with small tolerance)."""
-        return -1e-6 <= float(np.dot(halfplane[0:2], point)) - halfplane[2] <= 1e-6
+        """True iff *p* is active on this halfplane boundary (within tolerance)."""
+        return abs(float(np.dot(halfplane[0:2], point)) - halfplane[2]) <= 1e-4
 
-    def _remove_redundant_planes(self, planes: List[HalfPlane] | List[List], center: np.ndarray) -> List[HalfPlane]:
+    def _remove_redundant_planes(self, planes: List[HalfPlane] | List[List], center: np.ndarray, n_bbox: int = 0) -> List[HalfPlane]:
         """
         Remove redundant halfplanes from the polytope.
-        A halfplane is redundant if it's implied by the others
-        (i.e., all vertices defined by other planes satisfy it).
-        
+        A halfplane is redundant if no vertex of the polytope is active on it.
+        Only bbox planes (the first *n_bbox* planes) are candidates for removal;
+        obstacle-separating planes are always kept.
+
         Parameters
         ----------
         planes : list of HalfPlane
             The halfplanes to check
         center : np.ndarray
             A point strictly inside the polytope (e.g., ellipsoid center)
+        n_bbox : int
+            Number of leading planes that are bbox planes (candidates for removal).
         """
         if len(planes) <= 4:
             return planes
-        
+
         from scipy.spatial import ConvexHull, HalfspaceIntersection
-        
-        # try:
-        A_full = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in planes])
-        b_full = np.array([hp.offset for hp in planes])
-        # A_full = np.stack([hp.normal if hasattr(hp, 'normal') else hp[0:2] for hp in planes])
-        # b_full = np.array([hp.offset if hasattr(hp, 'offset') else hp[2] for hp in planes])
-        halfspaces = np.column_stack((A_full, -b_full))
-        
-        hs = HalfspaceIntersection(halfspaces, center)
-        verts = hs.intersections[ConvexHull(hs.intersections).vertices]
-        # except Exception as e:
-        #     # If we can't compute the full polytope, return as-is
-        #     return planes
-        
-        # Test each plane for redundancy
+
+        try:
+            A_full = np.stack([np.asarray(hp.normal, dtype=float).reshape(-1) for hp in planes])
+            b_full = np.array([hp.offset for hp in planes])
+            halfspaces = np.column_stack((A_full, -b_full))
+
+            hs = HalfspaceIntersection(halfspaces, center)
+            verts = hs.intersections[ConvexHull(hs.intersections).vertices]
+        except Exception:
+            return planes
+
         non_redundant = []
-        for hp_test in planes:
-            # Check if all vertices satisfy this halfplane
+        for idx, hp_test in enumerate(planes):
+            if idx >= n_bbox:
+                non_redundant.append(hp_test)
+                continue
             if hasattr(hp_test, 'normal'):
-                # print([hp_test.contains(v) for v in verts])
-                if any([hp_test.contains(v) for v in verts]):
-                    # This plane is NOT redundant
+                if any(hp_test.is_active(v) for v in verts):
                     non_redundant.append(hp_test)
             else:
-                # print([self._halfplane_contains_point(v, hp_test) for v in verts])
-                if any([self._halfplane_contains_point(v, hp_test) for v in verts]):
+                if any(self._halfplane_contains_point(v, hp_test) for v in verts):
                     non_redundant.append(hp_test)
-                            
+
         return non_redundant if non_redundant else planes
+
+    def _verify_obstacle_exclusion(
+        self,
+        planes: List[HalfPlane],
+        obstacles: list,
+        seed_verts: List[np.ndarray],
+        polytope_mode: bool,
+    ) -> List[HalfPlane]:
+        """
+        Post-hoc safety check: for every obstacle vertex that is inside the
+        polytope, add a separating halfplane (perpendicular bisector between
+        the seed centroid and the violating point).
+        """
+        seed_centroid = np.mean(seed_verts, axis=0)
+
+        def _inside_polytope(p: np.ndarray) -> bool:
+            return all(hp.normal.dot(p) <= hp.offset + 1e-9 for hp in planes)
+
+        all_points: List[np.ndarray] = []
+        if polytope_mode:
+            for poly in obstacles:
+                for v in poly:
+                    all_points.append(np.asarray(v, dtype=float).flatten()[:2])
+        else:
+            for p in obstacles:
+                all_points.append(np.asarray(p, dtype=float).flatten()[:2])
+
+        for p in all_points:
+            if _inside_polytope(p):
+                midpoint = 0.5 * (seed_centroid + p)
+                n = p - seed_centroid
+                n_len = np.linalg.norm(n)
+                if n_len < 1e-15:
+                    continue
+                n = n / n_len
+                offset = n.dot(midpoint)
+                planes.append(HalfPlane(normal=n, offset=offset))
+
+        return planes
 
     @staticmethod
     def _inscribed_radius(

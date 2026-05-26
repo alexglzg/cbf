@@ -97,7 +97,7 @@ def load_all_results(results_root: str) -> pd.DataFrame:
                         comp = step.get("comp_time_s")
                         iters = step.get("iterations")
 
-                        if kkt is None or comp is None or iters is None:
+                        if kkt is None or comp is None or iters is None or iters == 0:
                             continue
                         
                         entry = {
@@ -225,8 +225,8 @@ def create_violin_plots(df: pd.DataFrame, output_prefix=None):
     # plt.tight_layout()
 
     # if output_prefix:
-    # plt.savefig("total_kkt_per_iter_violin.pdf", format='pdf', transparent=True, bbox_inches='tight', pad_inches=0.1)
-    plt.show()
+    plt.savefig("total_kkt_per_iter_violin_newn4.pdf", format='pdf', transparent=True, bbox_inches='tight', pad_inches=0.1)
+    # plt.show()
 
 
 def main():
