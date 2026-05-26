@@ -7,6 +7,8 @@ from scipy.spatial import ConvexHull, HalfspaceIntersection
 
 import sys
 import os
+import glob
+from PIL import Image
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from control.dcbf_optimizer import NmpcDcbfOptimizerParam
@@ -447,6 +449,7 @@ class NmpcLseController:
                 reference_trajectory[:, 0],
                 reference_trajectory[:, 1],
                 color='blue',
+                linestyle='dashed',
                 linewidth=2,
                 label='Reference trajectory'
             )
@@ -456,7 +459,7 @@ class NmpcLseController:
                 reference_trajectory[:, 0],
                 reference_trajectory[:, 1],
                 linestyle='None',
-                marker='*',
+                marker='o',
                 color='blue',
                 markersize=8,
                 label='Reference waypoints'
@@ -499,22 +502,22 @@ class NmpcLseController:
         # Draw Seed
         self._ax.add_patch(Polygon(seed, color='blue', alpha=0.5))
         
-        # Draw Planes (Red Lines)
-        # n^T x = p  =>  nx * x + ny * y = p  =>  y = (p - nx*x) / ny
-        if A.shape[0] > 0:
-            xs = np.linspace(bbox[0], bbox[1], 10)
-            for i in range(A.shape[0]):
-                n = A[i]
-                p = b[i]
-                if abs(n[1]) > 0.01:
-                    ys = (p - n[0]*xs) / n[1]
-                    # Only plot lines roughly inside view
-                    if np.any((ys > bbox[2]) & (ys < bbox[3])):
-                        self._ax.plot(xs, ys, 'r-', alpha=0.3, linewidth=1)
-                else:
-                    # Vertical line x = p/nx
-                    x_line = p/n[0]
-                    self._ax.vlines(x_line, bbox[2], bbox[3], 'r', alpha=0.3)
+        # # Draw Planes (Red Lines)
+        # # n^T x = p  =>  nx * x + ny * y = p  =>  y = (p - nx*x) / ny
+        # if A.shape[0] > 0:
+        #     xs = np.linspace(bbox[0], bbox[1], 10)
+        #     for i in range(A.shape[0]):
+        #         n = A[i]
+        #         p = b[i]
+        #         if abs(n[1]) > 0.01:
+        #             ys = (p - n[0]*xs) / n[1]
+        #             # Only plot lines roughly inside view
+        #             if np.any((ys > bbox[2]) & (ys < bbox[3])):
+        #                 self._ax.plot(xs, ys, 'r-', alpha=0.3, linewidth=1)
+        #         else:
+        #             # Vertical line x = p/nx
+        #             x_line = p/n[0]
+        #             self._ax.vlines(x_line, bbox[2], bbox[3], 'r', alpha=0.3)
 
         # Draw Polytope (Green)
         if A.shape[0] > 0:
@@ -528,7 +531,42 @@ class NmpcLseController:
             
         self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
         self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
-        plt.pause(0.001)
+
+        # Save frames
+        self._plot_counter += 1
+        SAVE_EVERY_N_FRAMES = 10
+        if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
+            filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
+            self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
+            self._last_save_counter = self._plot_counter
+
+        self._ax.axis('off')
+        plt.savefig('benchmark_env.png', transparent=True)
+        self._fig.canvas.draw_idle()
+        self._fig.canvas.flush_events()
+
+    def _create_gif(self, output_path="plots/animation.gif", fps=10, max_frames=300):
+        frame_paths = sorted(glob.glob("plots/frame_*.png"))
+        if not frame_paths:
+            print("[GIF] No frames found in plots/. Run the simulation first.")
+            return
+
+        if len(frame_paths) > max_frames:
+            indices = np.linspace(0, len(frame_paths) - 1, max_frames, dtype=int)
+            frame_paths = [frame_paths[i] for i in indices]
+
+        print(f"[GIF] Creating GIF from {len(frame_paths)} frames → {output_path}")
+
+        frames = [Image.open(p).convert("RGBA") for p in frame_paths]
+        frames[0].save(
+            output_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=int(1000 / fps),
+            loop=0,
+            optimize=False,
+        )
+        print(f"[GIF] Saved: {output_path}  ({os.path.getsize(output_path) / 1024:.1f} KB)")
 
 def extract_obstacle_vertices(simulation_obstacles):
     obs_list = []

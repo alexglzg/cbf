@@ -574,7 +574,7 @@ def run_benchmark_env(
 
         sim.run_navigation(100.0, zone=0.2)
 
-        # controller._create_gif()
+        controller._create_gif()
 
         # ── aggregate results ─────────────────────────────────────────────────
         opt = controller._optimizer
@@ -790,8 +790,8 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 6,
-        max_obs     = 6,
+        min_obs     = 10,
+        max_obs     = 10,
         envs_per_count = 10, #10
         robot_shape = "rectangle",
         controllers = ["pipcbf"], #["dcbf", "pipcbf"],
