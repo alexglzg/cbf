@@ -38,7 +38,7 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         # --- Heading-aligned bounding box ---
         self.bbox_ahead = 4.0
         self.bbox_behind = 1.0
-        self.bbox_side = 1.5
+        self.bbox_side = 2.0
 
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
@@ -374,7 +374,7 @@ class NmpcLseController:
             # bbox_tuple = (bbox[0][-1], bbox[1][-1], bbox[2][-1], bbox[3][-1])
             # print("bbox: ", bbox)
             # print("bbox_tupple: ", bbox_tuple)
-            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
+            self._visualize(seed_poly, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox, local_trajectory)
             # self._visualize(seed_verts_list, obs_verts_list, A_safe, b_safe, bbox_tuple, global_path, np.asarray(self._mpc_trajectory), bbox)
         
         if self._opt_sol:
@@ -421,7 +421,7 @@ class NmpcLseController:
             logger._xtrajs.append(np.column_stack(x_values).T)
             logger._utrajs.append(np.column_stack(u_values).T)
 
-    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory, bbox_full):
+    def _visualize(self, seed, obstacles, A, b, bbox, reference_trajectory, mpc_trajectory, bbox_full, local_trajectory):
         if self._fig is None:
             plt.ioff()
             self._fig, self._ax = plt.subplots(figsize=(6, 6))
@@ -460,6 +460,29 @@ class NmpcLseController:
                 color='blue',
                 markersize=8,
                 label='Reference waypoints'
+            )
+
+        if local_trajectory is not None and len(reference_trajectory) > 1:
+            # self._ax.plot(
+            #     local_trajectory[:, 0],
+            #     local_trajectory[:, 1],
+            #     color='black',
+            #     linewidth=2,
+            #     label='Reference trajectory'
+            # )
+            heading = local_trajectory[:, 3]
+            dx = np.cos(heading)
+            dy = np.sin(heading)
+            self._ax.quiver(
+                local_trajectory[:, 0],
+                local_trajectory[:, 1],
+                dx, dy,
+                color='red',
+                scale=25,
+                width=0.004,
+                headwidth=8,
+                headlength=10,
+                label='Heading'
             )
         
         # Local MPC trajectory (green)
