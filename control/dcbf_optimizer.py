@@ -16,7 +16,7 @@ class NmpcDcbfOptimizerParam:
         self.mat_dR = np.diag([1.0, 1.0]) * 0.0
         self.gamma = 0.8
         self.pomega = 10.0
-        self.margin_dist = 0.1 # 0.1
+        self.margin_dist = 0.0 # 0.1
         self.terminal_weight = 2.0
 
 
