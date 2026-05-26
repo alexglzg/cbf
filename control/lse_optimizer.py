@@ -1,6 +1,7 @@
 import datetime
 import casadi as ca
 import numpy as np
+import math
 
 # --- Helper ---
 def smooth_min(e, alpha):
@@ -196,12 +197,14 @@ class NmpcLseOptimizer:
             
     def add_warm_start(self, param, system, cold_start, local_trajectory = []):
         """Set warm start initial values using stage-wise variables."""
+        # print("System state: ", system._state._x)
         if self._prev_x is None or self._prev_u is None or cold_start:
             print("COLD START MPC!")
             if not local_trajectory.size == 0:
                 self.opti.set_initial(self.x[0], system._state._x)
                 for k in range(1, len(self.x)):
-                    self.opti.set_initial(self.x[k], local_trajectory[k - 1, :])
+                    self.opti.set_initial(self.x[k][0:3], local_trajectory[k - 1][0:3])
+                    self.opti.set_initial(self.x[k][3], system._state._x[3])
                 # TODO add dynamics roll-out
                 for k in range(len(self.u)):
                     self.opti.set_initial(self.u[k], 0.0)
@@ -235,7 +238,14 @@ class NmpcLseOptimizer:
         """Setup optimization problem with proper ordering: variables → constraints → costs → warm start."""
         self.set_state(system._state)
         self.opti = ca.Opti()
-        
+
+        # Change heading of local trajectory to quadrant of system state 9always between 0 and 180 degrees)
+        if np.abs(system._state._x[3] - reference_trajectory[0][3]) >= np.pi:
+            # reference_trajectory = [reference_trajectory[i][3] + np.sign(system._state._x)*2*np.pi for i in reference_trajectory]
+            for i in range(reference_trajectory.shape[0]):
+                reference_trajectory[i, 3] += np.sign(system._state._x[3])*2*np.pi
+            # reference_trajectory = list(map(lambda x: x[0:3] + [x[3] + math.copysign(1, system._state._x)*2*math.pi], reference_trajectory))
+                        
         # 1. Initialize all variables
         self.initialize_variables(param)
         

@@ -39,7 +39,7 @@ class LseControllerParam(NmpcDcbfOptimizerParam):
         self.bbox_ahead = 4.0
         self.bbox_behind = 1.0
         self.bbox_side = 1.5
-        
+
 # ── clearance helpers (identical logic to dcbf_controller) ───────────────────
 
 def _closest_point_on_convex_poly(point: np.ndarray, verts: np.ndarray) -> np.ndarray:
