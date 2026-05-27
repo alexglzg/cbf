@@ -574,7 +574,7 @@ def run_benchmark_env(
 
         sim.run_navigation(100.0, zone=0.2)
 
-        # controller._create_gif()
+        controller._create_gif()
 
         # ── aggregate results ─────────────────────────────────────────────────
         opt = controller._optimizer

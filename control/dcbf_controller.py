@@ -278,6 +278,7 @@ class NmpcDcbfController:
                 reference_trajectory[:, 0],
                 reference_trajectory[:, 1],
                 color='blue',
+                linestyle='dashed',
                 linewidth=2,
                 label='Reference trajectory'
             )
@@ -287,7 +288,7 @@ class NmpcDcbfController:
                 reference_trajectory[:, 0],
                 reference_trajectory[:, 1],
                 linestyle='None',
-                marker='*',
+                marker='o',
                 color='blue',
                 markersize=8,
                 label='Reference waypoints'
@@ -304,42 +305,54 @@ class NmpcDcbfController:
             )
         
         # # BBox
-        # self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2], 
+        # self._ax.add_patch(Rectangle((bbox[0], bbox[2]), bbox[1]-bbox[0], bbox[3]-bbox[2],
         #                  linewidth=1, edgecolor='r', facecolor='none', linestyle='--', label='BBox'))
 
         # Obstacles
         for obs in obstacles:
             self._ax.add_patch(Polygon(obs, color='black', alpha=0.8))
-            
+
         # Robot Seed
         self._ax.add_patch(Polygon(seed, color='blue', alpha=0.5))
-        
-        # # Computed Polytope (Green)
+
+        # # Planes (Red Lines)
+        # if A.shape[0] > 0:
+        #     xs = np.linspace(bbox[0], bbox[1], 10)
+        #     for i in range(A.shape[0]):
+        #         n = A[i]
+        #         p = b[i]
+        #         if abs(n[1]) > 0.01:
+        #             ys = (p - n[0]*xs) / n[1]
+        #             if np.any((ys > bbox[2]) & (ys < bbox[3])):
+        #                 self._ax.plot(xs, ys, 'r-', alpha=0.3, linewidth=1)
+        #         else:
+        #             x_line = p/n[0]
+        #             self._ax.vlines(x_line, bbox[2], bbox[3], 'r', alpha=0.3)
+
+        # # Polytope (Green)
         # if A.shape[0] > 0:
         #     try:
         #         center = np.mean(seed, axis=0)
         #         halfspaces = np.column_stack((A, -b))
         #         hs = HalfspaceIntersection(halfspaces, center)
         #         verts = hs.intersections[ConvexHull(hs.intersections).vertices]
-        #         self._ax.add_patch(Polygon(verts, color='green', alpha=0.3, label='FIRI Region'))
+        #         self._ax.add_patch(Polygon(verts, color='green', alpha=0.3))
         #     except: pass
-            
-        # self._ax.set_title("DCBF Controller")
-        # plt.pause(0.001)
 
-        # Save every 10 frames instead of pausing every 0.001s
-        # SAVE_EVERY_N_FRAMES = 10
-        # if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
-        #     filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
-        #     self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
-        #     self._last_save_counter = self._plot_counter
+        # Local view
+        self._ax.set_xlim(bbox[0]-0.5, bbox[1]+0.5)
+        self._ax.set_ylim(bbox[2]-0.5, bbox[3]+0.5)
 
-        # self._plot_counter += 1
+        # Save frames
+        self._plot_counter += 1
+        SAVE_EVERY_N_FRAMES = 1
+        if self._plot_counter - self._last_save_counter >= SAVE_EVERY_N_FRAMES:
+            filepath = os.path.join("plots", f"frame_{self._plot_counter:05d}.png")
+            self._fig.savefig(filepath, dpi=80, bbox_inches='tight')
+            self._last_save_counter = self._plot_counter
 
-        # import pdb;pdb.set_trace()
         self._ax.axis('off')
         plt.savefig('benchmark_env.png', transparent=True)
-        # Non-blocking draw without the 0.001s sleep
         self._fig.canvas.draw_idle()
         self._fig.canvas.flush_events()
 
