@@ -741,7 +741,7 @@ def run_scalability_benchmark(
 
         print(f"\n── n={n_obs} obstacles  ({len(env_files)} envs) ─────────────")
         # # Standalone run
-        env_idx = 8
+        env_idx = 4
         fname = env_files[env_idx][1] # Filename
         env_path = os.path.join(env_folder, fname)
         for ctrl in controllers:
@@ -790,11 +790,11 @@ if __name__ == "__main__":
 
     # ── scalability benchmark ─────────────────────────────────────────────
     run_scalability_benchmark(
-        min_obs     = 9,
-        max_obs     = 9,
-        envs_per_count = 10, #10
+        min_obs     = 10,
+        max_obs     = 10,
+        envs_per_count = 10,
         robot_shape = "rectangle",
-        controllers = ["dcbf", "pipcbf"], #["dcbf", "pipcbf"],
+        controllers = ["dcbf"], #["dcbf", "pipcbf"],
         enable_vis  = False,   # <── set True to re-enable live plots
     )
 
